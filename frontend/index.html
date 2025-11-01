@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concurrent Chat System - Reader/Writer Synchronization</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <span class="logo-icon">⚡</span>
+                    ConcurrentSync
+                </h1>
+                <div class="header-controls">
+                    <button class="theme-toggle" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="hero-section">
+                <div class="hero-content">
+                    <h2 class="hero-title">Reader-Writer Synchronization System</h2>
+                    <p class="hero-subtitle">Advanced concurrent access control with real-time monitoring</p>
+                    
+                    <div class="stats-overview">
+                        <div class="stat-card">
+                            <div class="stat-icon">👁️</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="activeReaders">0</div>
+                                <div class="stat-label">Active Readers</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">✍️</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="activeWriters">0</div>
+                                <div class="stat-label">Active Writers</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📊</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="totalOperations">0</div>
+                                <div class="stat-label">Total Operations</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modified Actions Grid - 2x2 Layout -->
+            <div class="actions-grid">
+                <div class="action-row">
+                    <div class="action-card reader-card">
+                        <div class="card-icon">📖</div>
+                        <h3>Reader Access</h3>
+                        <p>View chat messages with concurrent read access. Multiple readers can access simultaneously.</p>
+                        <a href="reader.html" class="btn btn-primary">
+                            <span class="btn-icon">👁️</span>
+                            Enter Reader Mode
+                        </a>
+                    </div>
+
+                    <div class="action-card writer-card">
+                        <div class="card-icon">✍️</div>
+                        <h3>Writer Access</h3>
+                        <p>Post new messages with exclusive write access. Writers get priority over readers.</p>
+                        <a href="writer.html" class="btn btn-secondary">
+                            <span class="btn-icon">✏️</span>
+                            Enter Writer Mode
+                        </a>
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <div class="action-card dashboard-card">
+                        <div class="card-icon">📈</div>
+                        <h3>Live Dashboard</h3>
+                        <p>Real-time monitoring of system performance, active clients, and synchronization metrics.</p>
+                        <a href="dashboard.html" class="btn btn-accent">
+                            <span class="btn-icon">📊</span>
+                            View Dashboard
+                        </a>
+                    </div>
+
+                    <div class="action-card stats-card">
+                        <div class="card-icon">📋</div>
+                        <h3>Detailed Statistics</h3>
+                        <p>Comprehensive analytics with charts and historical performance data visualization.</p>
+                        <a href="stats.html" class="btn btn-outline">
+                            <span class="btn-icon">📈</span>
+                            View Statistics
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="system-info">
+                <h3>System Architecture</h3>
+                <div class="architecture-diagram">
+                    <div class="arch-node">
+                        <div class="arch-icon">🌐</div>
+                        <div class="arch-label">Clients</div>
+                    </div>
+                    <div class="arch-connector">→</div>
+                    <div class="arch-node">
+                        <div class="arch-icon">⚡</div>
+                        <div class="arch-label">CGI Handler</div>
+                    </div>
+                    <div class="arch-connector">→</div>
+                    <div class="arch-node">
+                        <div class="arch-icon">🔒</div>
+                        <div class="arch-label">Sync Manager</div>
+                    </div>
+                    <div class="arch-connector">→</div>
+                    <div class="arch-node">
+                        <div class="arch-icon">💾</div>
+                        <div class="arch-label">SQLite DB</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+// Update real-time stats with error handling
+function updateStats() {
+    fetch('/CN_Sessional/cgi-bin/server.cgi/status')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data.error) {
+                const readersElement = document.getElementById('activeReaders');
+                const writersElement = document.getElementById('activeWriters');
+                const totalOpsElement = document.getElementById('totalOperations');
+                
+                if (readersElement) readersElement.textContent = data.activeReaders;
+                if (writersElement) writersElement.textContent = data.activeWriters;
+                if (totalOpsElement) totalOpsElement.textContent = data.totalReads + data.totalWrites;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching stats:', error);
+            // Optional: Show offline indicator
+        });
+}
+
+// More frequent updates
+setInterval(updateStats, 1000); // Update every second
+updateStats(); // Initial load
+    </script>
+</body>
+</html>

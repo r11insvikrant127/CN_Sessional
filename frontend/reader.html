@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reader Mode - Concurrent Chat System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <a href="index.html" class="logo">
+                    <span class="logo-icon">📖</span>
+                    Reader Mode
+                </a>
+                <div class="header-controls">
+                    <button class="theme-toggle" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <a href="index.html" class="btn btn-outline">← Back</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- This entire content will be replaced by the server response -->
+            <div id="serverContent">
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading reader view...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Load the reader content directly from CGI
+        function loadReaderContent() {
+            fetch('/CN_Sessional/cgi-bin/server.cgi/reader')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.text();
+                })
+                .then(html => {
+                    document.getElementById('serverContent').innerHTML = html;
+                })
+                .catch(error => {
+                    document.getElementById('serverContent').innerHTML = 
+                        '<div class="error-state">' +
+                        '<div class="error-icon">❌</div>' +
+                        '<h3>Failed to load messages</h3>' +
+                        '<p>Please check if the server is running</p>' +
+                        '<button class="btn btn-primary" onclick="loadReaderContent()">Retry</button>' +
+                        '</div>';
+                });
+        }
+
+        // Load content when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadReaderContent();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Statistics - Concurrent Chat System</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <a href="index.html" class="logo">
+                    <span class="logo-icon">📈</span>
+                    Advanced Statistics
+                </a>
+                <div class="header-controls">
+                    <button class="theme-toggle" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <a href="index.html" class="btn btn-outline">← Back</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="stats-header">
+                <h1>System Analytics & Performance</h1>
+                <p class="stats-subtitle">Comprehensive metrics and visualization of reader-writer synchronization patterns</p>
+            </div>
+
+            <!-- Key Metrics -->
+            <div class="metrics-grid">
+                <div class="metric-card highlight">
+                    <div class="metric-icon">⚡</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="totalOps">0</div>
+                        <div class="metric-label">Total Operations</div>
+                        <div class="metric-change positive">+12.8%</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">👁️</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="statsReads">0</div>
+                        <div class="metric-label">Read Operations</div>
+                        <div class="metric-change positive">+15.3%</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">✍️</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="statsWrites">0</div>
+                        <div class="metric-label">Write Operations</div>
+                        <div class="metric-change positive">+9.7%</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="readWriteRatio">0:1</div>
+                        <div class="metric-label">Read/Write Ratio</div>
+                        <div class="metric-change neutral">Stable</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Charts -->
+            <div class="advanced-charts">
+                <div class="chart-row">
+                    <div class="chart-container large">
+                        <div class="chart-header">
+                            <h3>Operations Timeline</h3>
+                            <span class="time-range">Last 24 hours</span>
+                        </div>
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Performance Heatmap</h3>
+                            <span class="chart-description">System load distribution</span>
+                        </div>
+                        <canvas id="heatmapChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Efficiency Metrics</h3>
+                            <span class="chart-description">Reader vs Writer performance</span>
+                        </div>
+                        <canvas id="efficiencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Analytics -->
+            <div class="analytics-section">
+                <h3>Performance Insights</h3>
+                <div class="insights-grid">
+                    <div class="insight-card">
+                        <div class="insight-icon">🚀</div>
+                        <div class="insight-content">
+                            <h4>Peak Performance</h4>
+                            <p>System handles up to 15 concurrent readers with 95% efficiency</p>
+                        </div>
+                    </div>
+                    <div class="insight-card">
+                        <div class="insight-icon">🔄</div>
+                        <div class="insight-content">
+                            <h4>Optimal Concurrency</h4>
+                            <p>Best performance observed with 3-8 active readers and 1-2 writers</p>
+                        </div>
+                    </div>
+                    <div class="insight-card">
+                        <div class="insight-icon">📈</div>
+                        <div class="insight-content">
+                            <h4>Growth Trend</h4>
+                            <p>25% increase in total operations compared to last week</p>
+                        </div>
+                    </div>
+                    <div class="insight-card">
+                        <div class="insight-icon">⚡</div>
+                        <div class="insight-content">
+                            <h4>Fast Response</h4>
+                            <p>Average response time under 50ms for read operations</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="stats.js"></script>
+</body>
+</html>
