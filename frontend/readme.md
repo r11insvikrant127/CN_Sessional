@@ -6,16 +6,18 @@ A **modern, responsive frontend interface** for the Concurrent Chat System featu
 
 ## 📁 File Structure
 
+```plaintext
 frontend/
-├── index.html # Main dashboard with system overview
-├── reader.html # Reader interface for viewing messages
-├── writer.html # Writer interface for posting messages
-├── dashboard.html # Real-time monitoring dashboard
-├── stats.html # Advanced statistics and analytics
-├── style.css # Comprehensive CSS styling with themes
-├── script.js # Core JavaScript utilities and theme management
-├── dashboard.js # Real-time dashboard functionality
-└── stats.js # Advanced statistics and chart management
+├── index.html              # Main dashboard with system overview
+├── reader.html             # Reader interface for viewing messages
+├── writer.html             # Writer interface for posting messages
+├── dashboard.html          # Real-time monitoring dashboard
+├── stats.html              # Advanced statistics and analytics
+├── style.css               # Comprehensive CSS styling with themes
+├── script.js               # Core JavaScript utilities and theme management
+├── dashboard.js            # Real-time dashboard functionality
+└── stats.js                # Advanced statistics and chart management
+
 
 ---
 
