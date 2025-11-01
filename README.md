@@ -1,7 +1,3 @@
-<img width="515" height="28" alt="image" src="https://github.com/user-attachments/assets/394edc84-0573-4c41-a03c-2909826a50ce" /># 🧾 Reader–Writer Synchronization System  
-### 💡 Using C (CGI), HTML, JavaScript, and SQLite
-
----
 
 ## 🧠 Project Overview
 A web-based concurrent access system that dynamically categorizes multiple clients as **Readers** or **Writers**, ensuring safe access to a shared SQLite database through synchronization techniques inspired by the **Readers–Writers Problem** in Operating Systems.
