@@ -1,0 +1,24 @@
+# =====================================================
+# Reader–Writer Synchronization System (C Backend)
+# =====================================================
+# System & Library Dependencies
+# Install all using your package manager before building.
+
+# --- Core Compiler & Build Tools ---
+gcc                    # GNU C Compiler
+make                   # Build automation tool (optional but recommended)
+
+# --- Database Support ---
+sqlite3                # SQLite command-line tool
+libsqlite3-dev         # SQLite development headers for linking (-lsqlite3)
+
+# --- Threading Support ---
+libpthread-dev          # POSIX Threads library (usually included by default)
+
+# --- Web Server ---
+apache2                # Apache HTTP server for running CGI
+apache2-utils          # Optional: Apache management tools
+
+# --- Optional Tools ---
+curl                   # For testing CGI endpoints from terminal
+net-tools              # For checking network status and ports
