@@ -1,0 +1,86 @@
+# =====================================================
+# 🧠 Reader–Writer Synchronization System (.gitignore)
+# =====================================================
+
+# === Build Artifacts ===
+*.o
+*.out
+*.a
+*.so
+*.exe
+*.cgi
+*.gch
+*.obj
+*.dll
+
+# === Binaries ===
+server
+server.cgi
+*.bin
+*.exe
+
+# === Database Files ===
+# SQLite database and journals
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+
+# === Logs and Debug Output ===
+*.log
+/tmp/*.log
+/logs/*
+debug.log
+error.log
+db_debug.log
+sync_debug.log
+
+# === System Files ===
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.bak
+*.lock
+
+# === Build Tools & Temp ===
+/build/
+/dist/
+/obj/
+/bin/
+/out/
+/cmake-build*/
+
+# === Apache / CGI Deployment Paths ===
+/var/www/CN_Sessional/data/*
+!/var/www/CN_Sessional/data/.gitkeep
+
+/var/www/CN_Sessional/cgi-bin/*
+!/var/www/CN_Sessional/cgi-bin/.gitkeep
+
+# === Environment / Config Files ===
+.env
+*.conf
+apache2.conf
+httpd.conf
+
+# === IDE / Editor Metadata ===
+.vscode/
+.idea/
+*.code-workspace
+*.user
+*.sublime-project
+*.sublime-workspace
+
+# === OS-specific ===
+ehthumbs.db
+Desktop.ini
+
+# === Temporary Testing Files ===
+test_*
+tmp_*
+*.tmp.c
+*.tmp.h
