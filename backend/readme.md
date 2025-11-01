@@ -1,95 +1,148 @@
-Backend System - Concurrent Chat Application
-This backend system implements a concurrent chat application with reader-writer synchronization, database persistence, and real-time monitoring capabilities.
+# 💬 Backend System — Concurrent Chat Application
 
-🏗️ Architecture Overview
-Core Components
-1. Synchronization Manager (sync_manager.h/c)
-  a. Implements reader-writer locks using pthread mutexes
-  b. Manages concurrent access to shared resources
-  c. Tracks active readers and writers
+This backend system implements a **concurrent chat application** with:
+- Reader–Writer synchronization  
+- Persistent SQLite database storage  
+- Real-time monitoring and analytics  
 
-2. Database Layer (database.h/c)
-  a. SQLite-based data persistence
-  b. Thread-safe database operations
-  c. Connection pooling and health monitoring
-  d. Performance metrics collection
+---
 
-3. CGI Server (server.c)
-  a. HTTP request handling via CGI
-  b. Multiple endpoint support
-  c. Real-time statistics and monitoring
-  d. JSON API for frontend integration
+## 🏗️ Architecture Overview
 
+### ⚙️ Core Components
 
-Key Functions 
+#### 1. Synchronization Manager (`sync_manager.h` / `sync_manager.c`)
+- Implements Reader–Writer locks using **pthread mutexes**  
+- Manages concurrent access to shared resources  
+- Tracks active readers and writers in real time  
 
-📁 server.c 
+#### 2. Database Layer (`database.h` / `database.c`)
+- SQLite-based data persistence  
+- Thread-safe database operations with mutex protection  
+- Connection pooling and health monitoring  
+- Performance metrics and historical data collection  
 
-1. Request Handler Functions 
+#### 3. CGI Server (`server.c`)
+- Handles **HTTP requests via CGI**  
+- Supports multiple endpoints  
+- Provides **real-time statistics and monitoring**  
+- Exposes a **JSON API** for frontend integration  
 
-  a. main() - Main CGI entry point with routing and database initialization 
-  b. handle_reader() - Processes reader requests and displays messages 
-  c. handle_writer() - Handles writer message submissions with synchronization 
-  d. handle_status_json() - Provides real-time statistics via JSON API 
-  e. handle_historical_data() - Returns historical operation data for charts 
-  f. handle_concurrency_stats() - Provides concurrency distribution data 
-  g. handle_daily_load() - Returns daily system load patterns 
-  h. handle_performance_metrics() - Provides performance metrics for analytics 
-  i. handle_real_stats() - Displays detailed statistics HTML page 
-  j. handle_real_dashboard() - Shows live dashboard with real-time monitoring 
-  g. handle_live_active_clients() - Provides real-time active client data for charts 
+---
 
-2. Utility Functions 
+## 🔑 Key Functions
 
-  a. current_timestamp() - Gets current timestamp in milliseconds 
-  b. parse_post_data() - Extracts and decodes form data from POST requests 
-  c. generate_client_id() - Creates unique identifiers for client tracking 
-  d. print_html_header() - Outputs standardized HTML header 
-  e. print_html_footer() - Outputs standardized HTML footer 
+### 📁 `server.c`
 
-3. Debug Functions 
+#### 1. Request Handler Functions
 
-  a. debug_operation_history() - Debug output for operation history 
-  b. debug_operation_history_timezone() - Debug timezone analysis 
-  c. debug_daily_load() - Debug daily load data analysis 
+| Function | Description |
+|-----------|--------------|
+| `main()` | Main CGI entry point with routing and database initialization. |
+| `handle_reader()` | Processes reader requests and displays messages. |
+| `handle_writer()` | Handles writer message submissions with synchronization. |
+| `handle_status_json()` | Provides real-time statistics via JSON API. |
+| `handle_historical_data()` | Returns historical operation data for charts. |
+| `handle_concurrency_stats()` | Provides concurrency distribution data. |
+| `handle_daily_load()` | Returns daily system load patterns. |
+| `handle_performance_metrics()` | Provides performance metrics for analytics. |
+| `handle_real_stats()` | Displays detailed statistics HTML page. |
+| `handle_real_dashboard()` | Shows live dashboard with real-time monitoring. |
+| `handle_live_active_clients()` | Provides real-time active client data for charts. |
 
- 
+---
 
-📁 database.c 
+#### 2. Utility Functions
 
-1. Database Management 
+| Function | Description |
+|-----------|--------------|
+| `current_timestamp()` | Gets the current timestamp in milliseconds. |
+| `parse_post_data()` | Extracts and decodes form data from POST requests. |
+| `generate_client_id()` | Creates unique identifiers for client tracking. |
+| `print_html_header()` | Outputs standardized HTML header. |
+| `print_html_footer()` | Outputs standardized HTML footer. |
 
-  a. initialize_database() - Creates tables, enables WAL mode, sets up indexes 
-  b. close_database() - Safely closes database connection 
-  c. check_database_health() - Verifies database connectivity 
-  d. ensure_database_connection() - Implements reconnection logic with retries 
+---
 
-2. Core Operations 
+#### 3. Debug Functions
 
-  a. read_messages(FILE *output) - Retrieves and displays chat messages in HTML 
-  b. write_message(const char *username, const char *message) - Stores new messages with URL decoding 
-  c. log_access(const char *client_id, ...) - Records all system access for auditing 
-  d. update_stats() - Updates system statistics counters 
-  e. get_current_stats() - Retrieves current system statistics for real-time updates 
+| Function | Description |
+|-----------|--------------|
+| `debug_operation_history()` | Outputs debug information for operation history. |
+| `debug_operation_history_timezone()` | Debugs timezone handling and data consistency. |
+| `debug_daily_load()` | Analyzes and prints daily load distribution for testing. |
 
-3. Analytics & Monitoring 
+---
 
-  a. update_active_counts(int readers, int writers) - Tracks real-time reader/writer counts 
-  b. log_operation_metrics() - Logs operation metrics for historical data 
-  c. calculate_performance_metrics() - Computes system performance scores 
+### 📁 `database.c`
 
-4. Helper Functions 
+#### 1. Database Management
 
-  a. url_decode() - Decodes URL-encoded strings 
+| Function | Description |
+|-----------|--------------|
+| `initialize_database()` | Creates tables, enables WAL mode, and sets up indexes. |
+| `close_database()` | Safely closes database connection. |
+| `check_database_health()` | Verifies database connectivity and validity. |
+| `ensure_database_connection()` | Implements reconnection logic with retries. |
 
- 
+---
 
-📁 sync_manager.c 
+#### 2. Core Operations
 
-1. Synchronization Functions 
+| Function | Description |
+|-----------|--------------|
+| `read_messages(FILE *output)` | Retrieves and displays chat messages in HTML. |
+| `write_message(const char *username, const char *message)` | Stores new messages (with URL decoding). |
+| `log_access(const char *client_id, ...)` | Records all system access for auditing. |
+| `update_stats()` | Updates system statistics counters. |
+| `get_current_stats()` | Retrieves current system statistics for real-time updates. |
 
-  a. acquire_read_lock(const char *client_id) - Implements reader lock acquisition with mutex 
-  b. release_read_lock() - Safely releases reader locks and updates counters 
-  c. acquire_write_lock(const char *client_id) - Provides exclusive write access using mutex 
-  d. release_write_lock() - Releases write lock and allows waiting operations 
-  e. update_active_counts_in_db() - Synchronizes memory state with database. 
+---
+
+#### 3. Analytics & Monitoring
+
+| Function | Description |
+|-----------|--------------|
+| `update_active_counts(int readers, int writers)` | Tracks real-time reader/writer counts. |
+| `log_operation_metrics()` | Logs operation metrics for historical tracking. |
+| `calculate_performance_metrics()` | Computes overall performance and stability metrics. |
+
+---
+
+#### 4. Helper Functions
+
+| Function | Description |
+|-----------|--------------|
+| `url_decode()` | Decodes URL-encoded strings safely. |
+
+---
+
+### 📁 `sync_manager.c`
+
+#### 1. Synchronization Functions
+
+| Function | Description |
+|-----------|--------------|
+| `acquire_read_lock(const char *client_id)` | Implements reader lock acquisition using mutex. |
+| `release_read_lock()` | Safely releases reader locks and updates counters. |
+| `acquire_write_lock(const char *client_id)` | Grants exclusive write access using mutex. |
+| `release_write_lock()` | Releases write lock and resumes waiting operations. |
+| `update_active_counts_in_db()` | Synchronizes in-memory active counts with the database. |
+
+---
+
+## ✅ Summary
+
+This backend provides:
+- 🔒 **Safe concurrency** with Reader–Writer synchronization  
+- 💾 **SQLite persistence** with real-time updates  
+- 📊 **Operational analytics** for readers/writers and throughput  
+- 🌐 **CGI-based web endpoints** for dashboards and APIs  
+
+---
+
+**Author:** Indranil Das  
+**Language:** C (CGI, SQLite, pthreads)  
+**License:** MIT  
+**Platform:** Linux (Apache CGI Environment)
+
