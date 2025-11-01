@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Dashboard - Concurrent Chat System</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <a href="index.html" class="logo">
+                    <span class="logo-icon">📊</span>
+                    Live Dashboard
+                </a>
+                <div class="header-controls">
+                    <button class="theme-toggle" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <a href="index.html" class="btn btn-outline">← Back</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="dashboard-header">
+                <h1>Real-time System Monitoring</h1>
+                <p class="dashboard-subtitle">
+                    Live tracking of reader-writer synchronization and system performance
+                    <span class="live-indicator">● LIVE</span>
+                </p>
+            </div>
+
+            <!-- Real-time Stats -->
+            <div class="dashboard-stats">
+                <div class="stat-card large">
+                    <div class="stat-icon">👁️</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="liveReaders">0</div>
+                        <div class="stat-label">Active Readers</div>
+                        <div class="stat-trend" id="readerTrend">+0</div>
+                    </div>
+                </div>
+                <div class="stat-card large">
+                    <div class="stat-icon">✍️</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="liveWriters">0</div>
+                        <div class="stat-label">Active Writers</div>
+                        <div class="stat-trend" id="writerTrend">+0</div>
+                    </div>
+                </div>
+                <div class="stat-card large">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="totalReads">0</div>
+                        <div class="stat-label">Total Reads</div>
+                        <div class="stat-trend positive">+12.5%</div>
+                    </div>
+                </div>
+                <div class="stat-card large">
+                    <div class="stat-icon">📝</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="totalWrites">0</div>
+                        <div class="stat-label">Total Writes</div>
+                        <div class="stat-trend positive">+8.3%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Active Clients Over Time</h3>
+                        <span class="chart-update">Updated just now</span>
+                    </div>
+                    <canvas id="clientsChart"></canvas>
+        		
+		<div id="chartLoading" class="loading-indicator" style="display: none;">
+            		<div class="loading-spinner"></div>
+            		<span>Loading historical data...</span>
+        	</div>
+            </div>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Operation Distribution</h3>
+                        <span class="chart-update">Real-time</span>
+                    </div>
+                    <canvas id="operationsChart"></canvas>
+                </div>
+
+                <div class="chart-container full-width">
+                    <div class="chart-header">
+                        <h3>System Performance Metrics</h3>
+                        <span class="chart-update">Live monitoring</span>
+                    </div>
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="status-section">
+                <h3>System Status</h3>
+                <div class="status-grid">
+                    <div class="status-item online">
+                        <div class="status-indicator"></div>
+                        <div class="status-info">
+                            <div class="status-title">Database</div>
+                            <div class="status-desc">Connected and responsive</div>
+                        </div>
+                    </div>
+                    <div class="status-item online">
+                        <div class="status-indicator"></div>
+                        <div class="status-info">
+                            <div class="status-title">Synchronization</div>
+                            <div class="status-desc">Readers-Writers active</div>
+                        </div>
+                    </div>
+                    <div class="status-item online">
+                        <div class="status-indicator"></div>
+                        <div class="status-info">
+                            <div class="status-title">CGI Server</div>
+                            <div class="status-desc">Running optimally</div>
+                        </div>
+                    </div>
+                    <div class="status-item online">
+                        <div class="status-indicator"></div>
+                        <div class="status-info">
+                            <div class="status-title">Memory Usage</div>
+                            <div class="status-desc">45% - Optimal</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+	<!-- Chart.js core -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+    <!-- ✅ Time adapter (required for time-based x-axis) -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <script src="script.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>
