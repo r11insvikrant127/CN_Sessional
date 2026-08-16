@@ -360,75 +360,141 @@ void handle_concurrency_stats() {
 // FIXED: Heatmap day ordering and improved load calculation
 void handle_daily_load() {
     pthread_mutex_lock(&db_mutex);
-    
+
     printf("Content-type: application/json\n\n");
     printf("{\n");
-    
-    // Calculate total load per day
-    const char *sql = 
+
+    /*
+     * Daily system load is based on actual operations:
+     *
+     *     reads + writes
+     *
+     * Each day's value is normalized against the busiest
+     * day in the last 7 days.
+     *
+     * Therefore:
+     *   busiest day = 100%
+     *   no operations = 0%
+     */
+
+    const char *sql =
         "SELECT "
-        "strftime('%w', timestamp) as day_of_week, "
-        "SUM(active_readers * 10 + active_writers * 30) as total_load "
+        "strftime('%w', timestamp) AS day_of_week, "
+        "SUM(reads + writes) AS total_operations "
         "FROM operation_history "
         "WHERE timestamp >= datetime('now', '-7 days') "
         "GROUP BY strftime('%w', timestamp) "
         "ORDER BY day_of_week;";
-    
+
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-    
-    int day_loads[7] = {0, 0, 0, 0, 0, 0, 0};
-    int max_load = 1; // Avoid division by zero
-    
+
+    int day_loads[7] = {0};
+    int max_operations = 0;
+
     if (rc == SQLITE_OK) {
-        // First pass: find maximum load
+
+        /*
+         * First pass:
+         * Find the busiest day.
+         */
         while (sqlite3_step(stmt) == SQLITE_ROW) {
-            int load = sqlite3_column_int(stmt, 1);
-            if (load > max_load) max_load = load;
-        }
-        
-        // Second pass: calculate percentages
-        sqlite3_reset(stmt);
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            int day = sqlite3_column_int(stmt, 0);
-            int total_load = sqlite3_column_int(stmt, 1);
-            
-            int load_percentage = (total_load * 100) / max_load;
-            
-            // Map to chart order
-            int chart_index = -1;
-            switch (day) {
-                case 1: chart_index = 0; break; // Monday
-                case 2: chart_index = 1; break; // Tuesday  
-                case 3: chart_index = 2; break; // Wednesday
-                case 4: chart_index = 3; break; // Thursday
-                case 5: chart_index = 4; break; // Friday
-                case 6: chart_index = 5; break; // Saturday
-                case 0: chart_index = 6; break; // Sunday
+            int total_operations = sqlite3_column_int(stmt, 1);
+
+            if (total_operations > max_operations) {
+                max_operations = total_operations;
             }
-            
+        }
+
+        /*
+         * Second pass:
+         * Convert each day's operations into
+         * a percentage of the busiest day.
+         */
+        sqlite3_reset(stmt);
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+
+            int day = sqlite3_column_int(stmt, 0);
+            int total_operations = sqlite3_column_int(stmt, 1);
+
+            int load_percentage = 0;
+
+            if (max_operations > 0) {
+                load_percentage =
+                    (total_operations * 100) / max_operations;
+            }
+
+            /*
+             * SQLite %w:
+             *
+             * 0 = Sunday
+             * 1 = Monday
+             * 2 = Tuesday
+             * 3 = Wednesday
+             * 4 = Thursday
+             * 5 = Friday
+             * 6 = Saturday
+             *
+             * Frontend expects:
+             *
+             * 0 = Monday
+             * ...
+             * 6 = Sunday
+             */
+
+            int chart_index = -1;
+
+            switch (day) {
+                case 1: chart_index = 0; break;
+                case 2: chart_index = 1; break;
+                case 3: chart_index = 2; break;
+                case 4: chart_index = 3; break;
+                case 5: chart_index = 4; break;
+                case 6: chart_index = 5; break;
+                case 0: chart_index = 6; break;
+            }
+
             if (chart_index >= 0 && chart_index < 7) {
                 day_loads[chart_index] = load_percentage;
             }
         }
+
         sqlite3_finalize(stmt);
+
+    } else {
+        fprintf(
+            stderr,
+            "SQL error calculating daily load: %s\n",
+            sqlite3_errmsg(db)
+        );
     }
-    
-    // Output the data
+
     printf("  \"daily_load\": [");
+
     for (int i = 0; i < 7; i++) {
-        if (i > 0) printf(",");
+        if (i > 0) {
+            printf(",");
+        }
+
         printf("%d", day_loads[i]);
     }
+
     printf("]\n");
-    
     printf("}\n");
-    
+
     pthread_mutex_unlock(&db_mutex);
 }
 
 // FIXED: Performance metrics with proper data
 void handle_performance_metrics() {
+
+    /*
+     * Refresh cached performance metrics when they are stale.
+     * calculate_performance_metrics() handles db_mutex internally.
+     */
+    calculate_performance_metrics();
+
     pthread_mutex_lock(&db_mutex);
     
     printf("Content-type: application/json\n\n");
@@ -445,18 +511,25 @@ void handle_performance_metrics() {
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     
     // Default values
-    int reader_speed = 85, writer_speed = 78;
-    int reader_reliability = 90, writer_reliability = 95;
-    int reader_concurrency = 92, writer_concurrency = 70;
-    int reader_scalability = 80, writer_scalability = 85;
-    int reader_consistency = 88, writer_consistency = 98;
-    int reader_availability = 92, writer_availability = 80;
+	double reader_speed = 0;
+	double writer_speed = 0;
+	double reader_reliability = 0;
+	double writer_reliability = 0;
+	double reader_concurrency = 0;
+	double writer_concurrency = 0;
+	double reader_scalability = 0;
+	double writer_scalability = 0;
+	double reader_consistency = 0;
+	double writer_consistency = 0;
+	double reader_availability = 0;
+	double writer_availability = 0;
+
     
     if (rc == SQLITE_OK) {
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             const char *metric_type = (const char *)sqlite3_column_text(stmt, 0);
-            int reader_score = sqlite3_column_int(stmt, 1);
-            int writer_score = sqlite3_column_int(stmt, 2);
+            double reader_score = sqlite3_column_double(stmt, 1);
+	    double writer_score = sqlite3_column_double(stmt, 2);
             
             if (strcmp(metric_type, "speed") == 0) {
                 reader_speed = reader_score;
@@ -481,19 +554,20 @@ void handle_performance_metrics() {
         sqlite3_finalize(stmt);
     }
     
-    printf("  \"reader_speed\": %d,\n", reader_speed);
-    printf("  \"reader_reliability\": %d,\n", reader_reliability);
-    printf("  \"reader_concurrency\": %d,\n", reader_concurrency);
-    printf("  \"reader_scalability\": %d,\n", reader_scalability);
-    printf("  \"reader_consistency\": %d,\n", reader_consistency);
-    printf("  \"reader_availability\": %d,\n", reader_availability);
-    printf("  \"writer_speed\": %d,\n", writer_speed);
-    printf("  \"writer_reliability\": %d,\n", writer_reliability);
-    printf("  \"writer_concurrency\": %d,\n", writer_concurrency);
-    printf("  \"writer_scalability\": %d,\n", writer_scalability);
-    printf("  \"writer_consistency\": %d,\n", writer_consistency);
-    printf("  \"writer_availability\": %d\n", writer_availability);
-    printf("}\n");
+	printf("  \"reader_speed\": %.2f,\n", reader_speed);
+	printf("  \"reader_reliability\": %.2f,\n", reader_reliability);
+	printf("  \"reader_concurrency\": %.2f,\n", reader_concurrency);
+	printf("  \"reader_scalability\": %.2f,\n", reader_scalability);
+	printf("  \"reader_consistency\": %.2f,\n", reader_consistency);
+	printf("  \"reader_availability\": %.2f,\n", reader_availability);
+
+	printf("  \"writer_speed\": %.2f,\n", writer_speed);
+	printf("  \"writer_reliability\": %.2f,\n", writer_reliability);
+	printf("  \"writer_concurrency\": %.2f,\n", writer_concurrency);
+	printf("  \"writer_scalability\": %.2f,\n", writer_scalability);
+	printf("  \"writer_consistency\": %.2f,\n", writer_consistency);
+	printf("  \"writer_availability\": %.2f\n", writer_availability);
+	printf("}\n");
     
     pthread_mutex_unlock(&db_mutex);
 }

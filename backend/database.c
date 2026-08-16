@@ -77,8 +77,8 @@ const char *create_tables =
     "CREATE TABLE IF NOT EXISTS performance_metrics ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
     "metric_type TEXT NOT NULL,"
-    "reader_score INTEGER DEFAULT 0,"
-    "writer_score INTEGER DEFAULT 0,"
+    "reader_score REAL DEFAULT 0,"
+	"writer_score REAL DEFAULT 0,"
     "recorded_at DATETIME DEFAULT (datetime('now', 'localtime'))"  // CHANGED
     ");"
     
@@ -339,48 +339,90 @@ int calculate_performance_metrics() {
     }
     
     // FIXED: Complete COALESCE statements for all metrics
-    const char *metrics_sql = 
-        "INSERT INTO performance_metrics (metric_type, reader_score, writer_score) "
-        
-        // SPEED: Inverted calculation - faster operations = higher score
-        "SELECT 'speed', "
-        "   COALESCE(MAX(0, 100 - (SELECT AVG(duration_ms) FROM access_logs WHERE client_type = 'reader' AND success = 1 AND duration_ms > 0) / 10), 85), "
-        "   COALESCE(MAX(0, 100 - (SELECT AVG(duration_ms) FROM access_logs WHERE client_type = 'writer' AND success = 1 AND duration_ms > 0) / 10), 78) "
-        
-        "UNION ALL "
-        
-        // RELIABILITY: Success rate percentage - FIXED: Added COALESCE for writer
-        "SELECT 'reliability', "
-        "   COALESCE((SELECT (SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) FROM access_logs WHERE client_type = 'reader'), 90), "
-        "   COALESCE((SELECT (SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) FROM access_logs WHERE client_type = 'writer'), 95) "
-        
-        "UNION ALL "
-        
-        // CONCURRENCY: Normalized active user patterns
-        "SELECT 'concurrency', "
-        "   COALESCE((SELECT MIN(100, AVG(active_readers) * 15) FROM operation_history WHERE timestamp > datetime('now', '-1 hour')), 92), "
-        "   COALESCE((SELECT MIN(100, AVG(active_writers) * 50) FROM operation_history WHERE timestamp > datetime('now', '-1 hour')), 70) "
-        
-        "UNION ALL "
-        
-        // SCALABILITY: Operations per hour normalized
-        "SELECT 'scalability', "
-        "   COALESCE((SELECT MIN(100, COUNT(*) * 5) FROM access_logs WHERE client_type = 'reader' AND timestamp > datetime('now', '-1 hour')), 80), "
-        "   COALESCE((SELECT MIN(100, COUNT(*) * 10) FROM access_logs WHERE client_type = 'writer' AND timestamp > datetime('now', '-1 hour')), 85) "
-        
-        "UNION ALL "
-        
-        // CONSISTENCY: Based on recent success patterns
-        "SELECT 'consistency', "
-        "   COALESCE((SELECT (SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) FROM access_logs WHERE client_type = 'reader' AND timestamp > datetime('now', '-1 hour')), 95), "
-        "   COALESCE((SELECT (SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) FROM access_logs WHERE client_type = 'writer' AND timestamp > datetime('now', '-1 hour')), 98) "
-        
-        "UNION ALL "
-        
-        // AVAILABILITY: Based on system uptime and recent activity
-        "SELECT 'availability', "
-        "   COALESCE((SELECT 100 - (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / MAX(COUNT(*), 1)) FROM access_logs WHERE client_type = 'reader' AND timestamp > datetime('now', '-1 day')), 99), "
-"   COALESCE((SELECT 100 - (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / MAX(COUNT(*), 1)) FROM access_logs WHERE client_type = 'writer' AND timestamp > datetime('now', '-1 day')), 97);";
+    const char *metrics_sql =
+    "INSERT INTO performance_metrics (metric_type, reader_score, writer_score) "
+
+    // SPEED: Faster successful operations = higher score
+    "SELECT 'speed', "
+    "   COALESCE(MAX(0, 100 - (SELECT AVG(duration_ms) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'reader' "
+    "       AND success = 1 "
+    "       AND duration_ms > 0) / 10), 0), "
+    "   COALESCE(MAX(0, 100 - (SELECT AVG(duration_ms) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'writer' "
+    "       AND success = 1 "
+    "       AND duration_ms > 0) / 10), 0) "
+
+    "UNION ALL "
+
+    // RELIABILITY: Successful operations / total operations
+    "SELECT 'reliability', "
+    "   COALESCE((SELECT "
+    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'reader'), 0), "
+    "   COALESCE((SELECT "
+    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'writer'), 0) "
+
+    "UNION ALL "
+
+    // CONCURRENCY: Based on observed active clients
+    "SELECT 'concurrency', "
+    "   COALESCE((SELECT MIN(100, AVG(active_readers) * 15) "
+    "       FROM operation_history "
+    "       WHERE timestamp > datetime('now', '-1 hour')), 0), "
+    "   COALESCE((SELECT MIN(100, AVG(active_writers) * 50) "
+    "       FROM operation_history "
+    "       WHERE timestamp > datetime('now', '-1 hour')), 0) "
+
+    "UNION ALL "
+
+    // SCALABILITY: Based on actual operations in the last hour
+    "SELECT 'scalability', "
+    "   COALESCE((SELECT MIN(100, COUNT(*) * 5) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'reader' "
+    "       AND timestamp > datetime('now', '-1 hour')), 0), "
+    "   COALESCE((SELECT MIN(100, COUNT(*) * 10) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'writer' "
+    "       AND timestamp > datetime('now', '-1 hour')), 0) "
+
+    "UNION ALL "
+
+    // CONSISTENCY: Recent successful-operation percentage
+    "SELECT 'consistency', "
+    "   COALESCE((SELECT "
+    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'reader' "
+    "       AND timestamp > datetime('now', '-1 hour')), 0), "
+    "   COALESCE((SELECT "
+    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'writer' "
+    "       AND timestamp > datetime('now', '-1 hour')), 0) "
+
+    "UNION ALL "
+
+    // AVAILABILITY: Based on actual success/failure rate
+    "SELECT 'availability', "
+    "   COALESCE((SELECT "
+    "       100.0 - "
+    "       (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'reader' "
+    "       AND timestamp > datetime('now', '-1 day')), 0), "
+    "   COALESCE((SELECT "
+    "       100.0 - "
+    "       (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) "
+    "       FROM access_logs "
+    "       WHERE client_type = 'writer' "
+    "       AND timestamp > datetime('now', '-1 day')), 0);";
     
     char *err_msg = NULL;
     int rc = sqlite3_exec(db, metrics_sql, NULL, NULL, &err_msg);

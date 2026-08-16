@@ -8,11 +8,12 @@ class Dashboard {
     }
 
     init() {
-        this.createCharts();
-        this.startLiveUpdates();
-        this.updateDashboard();
-        this.startRealTimeUpdates();
-    }
+	    this.createCharts();
+	    this.startLiveUpdates();
+	    this.updateDashboard();
+	    this.updatePerformanceChart();
+	    this.startRealTimeUpdates();
+	}
 
     createCharts() {
         // === REAL-TIME ACTIVE CLIENTS CHART ===
@@ -111,10 +112,17 @@ class Dashboard {
         this.performanceChart = new Chart(performanceCtx, {
             type: 'bar',
             data: {
-                labels: ['Read Efficiency', 'Write Efficiency', 'Concurrency', 'Response Time'],
+                labels: [
+		    'Speed',
+		    'Reliability',
+		    'Concurrency',
+		    'Scalability',
+		    'Consistency',
+		    'Availability'
+		],
                 datasets: [{
                     label: 'Performance Score',
-                    data: [85, 78, 92, 88],
+                    data: [0, 0, 0, 0, 0, 0],
                     backgroundColor: [
                         'rgba(59, 130, 246, 0.8)',
                         'rgba(239, 68, 68, 0.8)',
@@ -197,17 +205,15 @@ class Dashboard {
             });
     }
 
-    // === FALLBACK IF NO DATA ===
-    showFallbackData() {
-        if (this.clientsChart) {
-            const now = new Date();
-            const timeString = now.toLocaleTimeString();
-            
-            // Add current time as fallback data point
-            this.updateChartData([timeString], [0], [0]);
-            this.updateChartTimestamp('clientsChart', 'No data - demo mode');
-        }
-    }
+    	// === FALLBACK IF NO DATA ===
+	    showFallbackData() {
+	    if (this.clientsChart) {
+		this.updateChartTimestamp(
+		    'clientsChart',
+		    'Unable to load live data'
+		);
+	    }
+	}
 
     // === UPDATE "LAST UPDATED" TEXT ===
     updateChartTimestamp(chartId, customMessage = null) {
@@ -236,15 +242,41 @@ class Dashboard {
                 }
             })
             .catch(error => {
-                console.error('Error updating dashboard:', error);
-                this.updateStats({
-                    activeReaders: 0,
-                    activeWriters: 0,
-                    totalReads: 0,
-                    totalWrites: 0
-                });
-            });
+		    console.error('Error updating dashboard:', error);
+		});
     }
+    
+    async updatePerformanceChart() {
+	    try {
+		const response = await fetch(
+		    '/CN_Sessional/cgi-bin/server.cgi/performance'
+		);
+
+		if (!response.ok) {
+		    throw new Error('Performance API request failed');
+		}
+
+		const data = await response.json();
+
+		if (this.performanceChart) {
+		    this.performanceChart.data.datasets[0].data = [
+		        data.reader_speed,
+		        data.reader_reliability,
+		        data.reader_concurrency,
+		        data.reader_scalability,
+		        data.reader_consistency,
+		        data.reader_availability
+		    ];
+
+		    this.performanceChart.update('none');
+		}
+	    } catch (error) {
+		console.error(
+		    'Error fetching performance metrics:',
+		    error
+		);
+	    }
+	}
 
     // === UPDATE STATS VALUES ===
     updateStats(data) {
@@ -276,21 +308,15 @@ class Dashboard {
             this.operationsChart.data.datasets[0].data = [data.totalReads, data.totalWrites];
             this.operationsChart.update();
         }
-
-        if (this.performanceChart) {
-            const readEfficiency = Math.min(100, Math.round((data.totalReads / (data.totalReads + data.totalWrites + 1)) * 100));
-            const writeEfficiency = Math.min(100, Math.round((data.totalWrites / (data.totalReads + data.totalWrites + 1)) * 100));
-            const concurrency = Math.min(100, data.activeReaders * 15 + data.activeWriters * 25);
-            const responseTime = Math.max(20, 100 - (data.activeReaders + data.activeWriters) * 8);
-            this.performanceChart.data.datasets[0].data = [readEfficiency, writeEfficiency, concurrency, responseTime];
-            this.performanceChart.update();
-        }
     }
 
     // === START LIVE REFRESH CYCLES ===
     startLiveUpdates() {
-        setInterval(() => this.updateDashboard(), 2000);
-    }
+	    setInterval(() => {
+		this.updateDashboard();
+		this.updatePerformanceChart();
+	    }, 2000);
+	}
 
     startRealTimeUpdates() {
         setInterval(() => this.updateRealTimeActiveClients(), 1000);
