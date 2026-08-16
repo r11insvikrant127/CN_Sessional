@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Writer Mode - Concurrent Chat System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <a href="index.html" class="logo">
+                    <span class="logo-icon">✍️</span>
+                    Writer Mode
+                </a>
+                <div class="header-controls">
+                    <button class="theme-toggle" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <a href="index.html" class="btn btn-outline">← Back</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h1>Post New Message</h1>
+                <p class="page-subtitle">Exclusive write access - Writers get priority over readers</p>
+                <div class="writer-stats">
+                    <div class="writer-stat">
+                        <span class="stat-badge writers">Active Writers: <span id="currentWriters">0</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="writer-form-container">
+                <form id="messageForm" class="message-form"
+		      action="/CN_Sessional/cgi-bin/server.cgi/writer"
+		      method="POST">
+
+		    <div class="form-group">
+			<label for="message">Message</label>
+			<textarea id="message" name="message" required
+				  placeholder="Type your message here..."
+				  maxlength="256" rows="4"></textarea>
+
+			<div class="char-count">
+			    <span id="charCount">0</span>/256 characters
+			</div>
+		    </div>
+
+		    <div class="form-actions">
+			<button type="submit" class="btn btn-secondary" id="submitBtn">
+			    <span class="btn-icon">🚀</span>
+			    Post Message
+			</button>
+
+			<button type="button" class="btn btn-outline" onclick="clearForm()">
+			    <span class="btn-icon">🗑️</span>
+			    Clear
+			</button>
+		    </div>
+		</form>
+            </div>
+
+            <div class="writer-info">
+                <div class="info-card">
+                    <h3>⚡ Writer Access Rules</h3>
+                    <ul>
+                        <li>Only one writer can access at a time</li>
+                        <li>Writers block all readers during access</li>
+                        <li>Writer gets exclusive lock on the resource</li>
+                        <li>Ensures data consistency and integrity</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+<script>
+
+	// Character counter
+	const messageInput = document.getElementById('message');
+	const charCount = document.getElementById('charCount');
+
+	messageInput.addEventListener('input', () => {
+	    charCount.textContent = messageInput.value.length;
+	});
+
+	// Form submission
+	document.getElementById('messageForm').addEventListener('submit', function(e) {
+	    e.preventDefault();
+
+	    const message = document.getElementById('message').value.trim();
+
+	    if (!message) {
+		alert('Please provide a message');
+		return;
+	    }
+
+	    const submitBtn = document.getElementById('submitBtn');
+	    const originalText = submitBtn.innerHTML;
+
+	    submitBtn.innerHTML = '<span class="btn-icon">⏳</span> Posting...';
+	    submitBtn.disabled = true;
+
+	    const formData = new URLSearchParams();
+	    formData.append('message', message);
+
+	    fetch('/CN_Sessional/cgi-bin/server.cgi/writer', {
+		method: 'POST',
+		headers: {
+		    'Content-Type': 'application/x-www-form-urlencoded'
+		},
+		credentials: 'same-origin',
+		body: formData
+	    })
+	    .then(async response => {
+
+		// Authentication failure
+		if (response.status === 401) {
+		    window.location.href = 'index.html?login=required';
+		    return null;
+		}
+
+		// Authorization failure
+		if (response.status === 403) {
+		    alert('You are not authorized to use Writer Mode.');
+		    return null;
+		}
+
+		if (!response.ok) {
+		    throw new Error('Request failed');
+		}
+
+		return response.text();
+	    })
+	    .then(html => {
+
+		if (html) {
+		    document.open();
+		    document.write(html);
+		    document.close();
+		}
+
+	    })
+	    .catch(error => {
+		submitBtn.innerHTML = originalText;
+		submitBtn.disabled = false;
+
+		alert('Error posting message: ' + error.message);
+	    });
+	});
+
+	function clearForm() {
+	    document.getElementById('messageForm').reset();
+	    charCount.textContent = '0';
+	}
+
+	function updateWriterStats() {
+	    fetch('/CN_Sessional/cgi-bin/server.cgi/status')
+		.then(response => response.json())
+		.then(data => {
+		    if (!data.error) {
+		        const writersElement =
+		            document.getElementById('currentWriters');
+
+		        if (writersElement) {
+		            writersElement.textContent = data.activeWriters;
+		        }
+		    }
+		})
+		.catch(() => {
+		    // Ignore temporary statistics failures
+		});
+	}
+
+	setInterval(updateWriterStats, 3000);
+	updateWriterStats();
+
+	</script>
+</body>
+</html>

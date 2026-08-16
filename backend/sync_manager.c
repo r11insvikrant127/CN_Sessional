@@ -28,6 +28,8 @@ void update_active_counts_in_db() {
 }
 
 int acquire_read_lock(const char *client_id) {
+    (void)client_id;
+
     pthread_mutex_lock(&read_count_mutex);
     
     active_readers++;
@@ -55,6 +57,8 @@ void release_read_lock() {
 }
 
 int acquire_write_lock(const char *client_id) {
+    (void)client_id;
+
     pthread_mutex_lock(&write_mutex);
     
     active_writers = 1;

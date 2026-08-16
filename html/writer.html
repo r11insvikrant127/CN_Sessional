@@ -6,162 +6,527 @@
     <title>Writer Mode - Concurrent Chat System</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="container">
+
         <header class="header">
             <div class="header-content">
+
                 <a href="index.html" class="logo">
                     <span class="logo-icon">✍️</span>
                     Writer Mode
                 </a>
+
                 <div class="header-controls">
+
                     <button class="theme-toggle" id="themeToggle">
                         <span class="theme-icon">🌙</span>
                     </button>
-                    <a href="index.html" class="btn btn-outline">← Back</a>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline"
+                        id="logoutBtn">
+                        Logout
+                    </button>
+
+                    <a href="index.html" class="btn btn-outline">
+                        ← Back
+                    </a>
+
                 </div>
             </div>
         </header>
 
+
         <main class="main-content">
+
             <div class="page-header">
+
                 <h1>Post New Message</h1>
-                <p class="page-subtitle">Exclusive write access - Writers get priority over readers</p>
+
+                <p class="page-subtitle">
+                    Exclusive write access - Writers get priority over readers
+                </p>
+
+                <!-- Authenticated user information -->
                 <div class="writer-stats">
+
                     <div class="writer-stat">
-                        <span class="stat-badge writers">Active Writers: <span id="currentWriters">0</span></span>
+                        <span class="stat-badge writers">
+                            Authenticated as:
+                            <strong id="authenticatedUsername">
+                                Checking...
+                            </strong>
+                        </span>
                     </div>
+
+                    <div class="writer-stat">
+                        <span class="stat-badge writers">
+                            Active Writers:
+                            <span id="currentWriters">0</span>
+                        </span>
+                    </div>
+
                 </div>
+
             </div>
 
+
             <div class="writer-form-container">
-                <form id="messageForm" class="message-form" action="/CN_Sessional/cgi-bin/server.cgi/writer" method="POST">
-                    <div class="form-group">
-                        <label for="username">Username</label>
-                        <input type="text" id="username" name="username" required 
-                               placeholder="Enter your username" maxlength="50">
-                    </div>
+
+                <form
+                    id="messageForm"
+                    class="message-form"
+                    action="/CN_Sessional/cgi-bin/server.cgi/writer"
+                    method="POST">
 
                     <div class="form-group">
-                        <label for="message">Message</label>
-                        <textarea id="message" name="message" required 
-                                  placeholder="Type your message here..." maxlength="256" rows="4"></textarea>
+
+                        <label for="message">
+                            Message
+                        </label>
+
+                        <textarea
+                            id="message"
+                            name="message"
+                            required
+                            placeholder="Type your message here..."
+                            maxlength="256"
+                            rows="4"></textarea>
+
                         <div class="char-count">
                             <span id="charCount">0</span>/256 characters
                         </div>
+
                     </div>
 
-                    <input type="hidden" name="client_type" value="writer">
+
+                    <input
+                        type="hidden"
+                        name="client_type"
+                        value="writer">
+
 
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-secondary" id="submitBtn">
+
+                        <button
+                            type="submit"
+                            class="btn btn-secondary"
+                            id="submitBtn">
+
                             <span class="btn-icon">🚀</span>
                             Post Message
+
                         </button>
-                        <button type="button" class="btn btn-outline" onclick="clearForm()">
+
+                        <button
+                            type="button"
+                            class="btn btn-outline"
+                            onclick="clearForm()">
+
                             <span class="btn-icon">🗑️</span>
                             Clear
+
                         </button>
+
                     </div>
+
                 </form>
+
             </div>
+
 
             <div class="writer-info">
+
                 <div class="info-card">
+
                     <h3>⚡ Writer Access Rules</h3>
+
                     <ul>
-                        <li>Only one writer can access at a time</li>
-                        <li>Writers block all readers during access</li>
-                        <li>Writer gets exclusive lock on the resource</li>
+                        <li>Only authenticated writers can post messages</li>
+                        <li>The username comes from the authenticated session</li>
+                        <li>Client-supplied usernames are ignored by the backend</li>
+                        <li>Only one writer can access the resource at a time</li>
+                        <li>Writers block readers during exclusive access</li>
                         <li>Ensures data consistency and integrity</li>
                     </ul>
+
                 </div>
+
             </div>
+
         </main>
+
     </div>
 
+
     <script src="script.js"></script>
-<script>
 
-// Character counter
-const messageInput = document.getElementById('message');
-const charCount = document.getElementById('charCount');
+    <script>
 
-messageInput.addEventListener('input', () => {
-    charCount.textContent = messageInput.value.length;
-});
+    /*
+     * Check authentication by calling the protected writer endpoint.
+     *
+     * We intentionally do NOT ask the browser for the username.
+     * The backend obtains it from the authenticated session.
+     */
+	function checkAuthentication() {
 
-// Form submission - FIXED VERSION
-document.getElementById('messageForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const username = document.getElementById('username').value.trim();
-    const message = document.getElementById('message').value.trim();
-    
-    if (!username || !message) {
-        alert('Please provide both username and message');
-        return;
-    }
-    
-    const submitBtn = document.getElementById('submitBtn');
-    const originalText = submitBtn.innerHTML;
-    
-    // Show loading state
-    submitBtn.innerHTML = '<span class="btn-icon">⏳</span> Posting...';
-    submitBtn.disabled = true;
-
-    // Create form data manually with proper encoding
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('message', message);
-    formData.append('client_type', 'writer');
-
-    // Submit form
-    fetch('/CN_Sessional/cgi-bin/server.cgi/writer', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData
+    fetch('/CN_Sessional/cgi-bin/server.cgi/me', {
+        method: 'GET',
+        credentials: 'same-origin'
     })
     .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
+
+        if (response.status === 401) {
+            window.location.href = 'index.html';
+            return null;
         }
-        return response.text();
+
+        if (!response.ok) {
+            throw new Error('Authentication check failed');
+        }
+
+        return response.json();
+
     })
-    .then(html => {
-        // Replace entire page with response
-        document.open();
-        document.write(html);
-        document.close();
+    .then(data => {
+
+        if (!data || !data.authenticated) {
+            window.location.href = 'index.html';
+            return;
+        }
+
+        const usernameElement =
+            document.getElementById('authenticatedUsername');
+
+        if (usernameElement) {
+            usernameElement.textContent =
+                data.username + ' (' + data.role + ')';
+        }
+
     })
     .catch(error => {
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-        alert('Error posting message: ' + error.message);
+
+        console.error(
+            'Authentication check failed:',
+            error
+        );
+
+        window.location.href = 'index.html';
+
     });
-});
+}  
 
-function clearForm() {
-    document.getElementById('messageForm').reset();
-    charCount.textContent = '0';
-}
 
-function updateWriterStats() {
-    fetch('/CN_Sessional/cgi-bin/server.cgi/status')
-        .then(response => response.json())
-        .then(data => {
-            if (!data.error) {
-                document.getElementById('currentWriters').textContent = data.activeWriters;
+
+    /*
+     * Character counter
+     */
+    const messageInput =
+        document.getElementById('message');
+
+    const charCount =
+        document.getElementById('charCount');
+
+    if (messageInput && charCount) {
+
+        messageInput.addEventListener(
+            'input',
+            () => {
+                charCount.textContent =
+                    messageInput.value.length;
             }
-        });
-}
+        );
 
-// Update stats periodically
-setInterval(updateWriterStats, 3000);
-updateWriterStats();
+    }
+
+
+    /*
+     * Submit message.
+     *
+     * IMPORTANT:
+     * No username is sent.
+     *
+     * The backend obtains the username from session_id.
+     */
+    document
+        .getElementById('messageForm')
+        .addEventListener('submit', function(e) {
+
+            e.preventDefault();
+
+            const message =
+                document.getElementById('message')
+                    .value
+                    .trim();
+
+            if (!message) {
+
+                alert(
+                    'Please provide a message'
+                );
+
+                return;
+            }
+
+
+            const submitBtn =
+                document.getElementById('submitBtn');
+
+            const originalText =
+                submitBtn.innerHTML;
+
+
+            submitBtn.innerHTML =
+                '<span class="btn-icon">⏳</span> Posting...';
+
+            submitBtn.disabled = true;
+
+
+            const formData =
+                new URLSearchParams();
+
+            formData.append(
+                'message',
+                message
+            );
+
+            formData.append(
+                'client_type',
+                'writer'
+            );
+
+
+            fetch(
+                '/CN_Sessional/cgi-bin/server.cgi/writer',
+                {
+                    method: 'POST',
+
+                    headers: {
+                        'Content-Type':
+                            'application/x-www-form-urlencoded'
+                    },
+
+                    credentials: 'same-origin',
+
+                    body: formData
+                }
+            )
+            .then(response => {
+
+                /*
+                 * Backend returns 401 if the session is
+                 * missing or expired.
+                 */
+                if (response.status === 401) {
+
+                    window.location.href =
+                        'index.html';
+
+                    return null;
+                }
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        'Server returned HTTP ' +
+                        response.status
+                    );
+
+                }
+
+                return response.text();
+
+            })
+            .then(html => {
+
+                if (!html) {
+                    return;
+                }
+
+                /*
+                 * Display backend response.
+                 */
+                document.open();
+                document.write(html);
+                document.close();
+
+            })
+            .catch(error => {
+
+                console.error(
+                    'Error posting message:',
+                    error
+                );
+
+                submitBtn.innerHTML =
+                    originalText;
+
+                submitBtn.disabled =
+                    false;
+
+                alert(
+                    'Error posting message: ' +
+                    error.message
+                );
+
+            });
+
+        });
+
+
+    /*
+     * Clear form
+     */
+    function clearForm() {
+
+        const form =
+            document.getElementById(
+                'messageForm'
+            );
+
+        form.reset();
+
+        if (charCount) {
+            charCount.textContent = '0';
+        }
+
+    }
+
+
+    /*
+     * Live writer statistics
+     */
+    function updateWriterStats() {
+
+        fetch(
+            '/CN_Sessional/cgi-bin/server.cgi/status',
+            {
+                credentials: 'same-origin'
+            }
+        )
+        .then(response => {
+
+            if (response.status === 401) {
+
+                window.location.href =
+                    'index.html';
+
+                return null;
+            }
+
+            return response.json();
+
+        })
+        .then(data => {
+
+            if (!data) {
+                return;
+            }
+
+            if (!data.error) {
+
+                const writersElement =
+                    document.getElementById(
+                        'currentWriters'
+                    );
+
+                if (writersElement) {
+
+                    writersElement.textContent =
+                        data.activeWriters;
+
+                }
+
+            }
+
+        })
+        .catch(error => {
+
+            console.error(
+                'Error fetching writer stats:',
+                error
+            );
+
+        });
+
+    }
+
+
+    /*
+     * Logout
+     */
+    document
+        .getElementById('logoutBtn')
+        .addEventListener('click', function() {
+
+            fetch(
+                '/CN_Sessional/cgi-bin/server.cgi/logout',
+                {
+                    method: 'POST',
+                    credentials: 'same-origin'
+                }
+            )
+            .then(response => {
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        'Logout failed'
+                    );
+
+                }
+
+                return response.json();
+
+            })
+            .then(data => {
+
+                if (data.success) {
+
+                    window.location.href =
+                        'index.html';
+
+                }
+
+            })
+            .catch(error => {
+
+                console.error(
+                    'Logout error:',
+                    error
+                );
+
+                alert(
+                    'Unable to logout. Please try again.'
+                );
+
+            });
+
+        });
+
+
+    /*
+     * Initial authentication check
+     */
+    checkAuthentication();
+
+
+    /*
+     * Update statistics every 3 seconds.
+     */
+    setInterval(
+        updateWriterStats,
+        3000
+    );
+
+    updateWriterStats();
 
     </script>
+
 </body>
 </html>

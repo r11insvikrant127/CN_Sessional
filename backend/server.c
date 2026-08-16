@@ -1,5 +1,8 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <ctype.h>
 #include "database.h"
+#include "auth.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +12,8 @@
 #include <sqlite3.h>
 #include <sys/time.h>
 #include "sync_manager.h"
-#include <unistd.h> 
+#include <unistd.h>
+#include <sodium.h>
 
 // ADD THESE EXTERNAL DECLARATIONS at the top, after includes
 extern sqlite3 *db;
@@ -17,7 +21,7 @@ extern sqlite3 *db;
 // External functions from other modules
 extern int initialize_database();
 extern int read_messages(FILE *output);
-extern int write_message(const char *username, const char *message);
+extern int write_message(const char *authenticated_username, const char *message);
 extern int log_access(const char *client_id, const char *client_type, const char *action, int duration_ms, int success);
 extern int acquire_read_lock(const char *client_id);
 extern void release_read_lock();
@@ -40,7 +44,6 @@ long long current_timestamp() {
 }
 
 // Function to parse POST data
-// Function to parse POST data
 void parse_post_data(char **username, char **message, char **client_type) {
     char *content_length_str = getenv("CONTENT_LENGTH");
     int content_length = 0;
@@ -61,31 +64,110 @@ void parse_post_data(char **username, char **message, char **client_type) {
             char decoded_value[256]; // Buffer for decoded value
             
             if (strncmp(token, "username=", 9) == 0) {
-                value_start = token + 9;
-            } else if (strncmp(token, "message=", 8) == 0) {
-                value_start = token + 8;
-            } else if (strncmp(token, "client_type=", 12) == 0) {
-                value_start = token + 12;
-            }
-            
-            if (value_start) {
-                // Use the existing url_decode function
-                url_decode(value_start, decoded_value, sizeof(decoded_value));
-                
-                // Assign to appropriate variable
-                if (strncmp(token, "username=", 9) == 0) {
-                    *username = strdup(decoded_value);
-                } else if (strncmp(token, "message=", 8) == 0) {
-                    *message = strdup(decoded_value);
-                } else if (strncmp(token, "client_type=", 12) == 0) {
-                    *client_type = strdup(decoded_value);
-                }
-            }
+		    value_start = token + 9;
+		} else if (strncmp(token, "message=", 8) == 0) {
+		    value_start = token + 8;
+		} else if (strncmp(token, "client_type=", 12) == 0) {
+		    value_start = token + 12;
+		}
+
+		if (value_start) {
+		    url_decode(value_start, decoded_value, sizeof(decoded_value));
+
+		    if (strncmp(token, "username=", 9) == 0) {
+			*username = strdup(decoded_value);
+		    } else if (strncmp(token, "message=", 8) == 0) {
+			*message = strdup(decoded_value);
+		    } else if (strncmp(token, "client_type=", 12) == 0) {
+			*client_type = strdup(decoded_value);
+		    }
+		}
             
             token = strtok(NULL, "&");
         }
         free(post_data);
     }
+}
+
+/*
+ * Parse login POST data.
+ *
+ * Expected fields:
+ *   username=<value>&password=<value>
+ *
+ * Password is never logged.
+ */
+void parse_login_data(char **username, char **password) {
+    *username = NULL;
+    *password = NULL;
+
+    char *content_length_str = getenv("CONTENT_LENGTH");
+    int content_length = 0;
+
+    if (content_length_str) {
+        content_length = atoi(content_length_str);
+    }
+
+    /*
+     * Reject unreasonable request sizes.
+     */
+    if (content_length <= 0 || content_length > 4096) {
+        return;
+    }
+
+    char *post_data = malloc((size_t)content_length + 1);
+
+    if (post_data == NULL) {
+        return;
+    }
+
+    size_t bytes_read = fread(
+        post_data,
+        1,
+        (size_t)content_length,
+        stdin
+    );
+
+    post_data[bytes_read] = '\0';
+
+    char *token = strtok(post_data, "&");
+
+    while (token != NULL) {
+        char decoded_value[512];
+
+        if (strncmp(token, "username=", 9) == 0) {
+
+            url_decode(
+                token + 9,
+                decoded_value,
+                sizeof(decoded_value)
+            );
+
+            *username = malloc(strlen(decoded_value) + 1);
+
+            if (*username != NULL) {
+                strcpy(*username, decoded_value);
+            }
+
+        } else if (strncmp(token, "password=", 9) == 0) {
+
+            url_decode(
+                token + 9,
+                decoded_value,
+                sizeof(decoded_value)
+            );
+
+            *password = malloc(strlen(decoded_value) + 1);
+
+            if (*password != NULL) {
+                strcpy(*password, decoded_value);
+            }
+        }
+
+        token = strtok(NULL, "&");
+    }
+
+    free(post_data);
 }
 
 // Function to generate client ID from remote address
@@ -233,12 +315,15 @@ void handle_concurrency_stats() {
     char sql[512];
     snprintf(sql, sizeof(sql),
         "SELECT "
-        "SUM(CASE WHEN active_readers = 0 THEN 1 ELSE 0 END) as zero_readers, "
-        "SUM(CASE WHEN active_readers BETWEEN 1 AND %d THEN 1 ELSE 0 END) as low_readers, "
-        "SUM(CASE WHEN active_readers BETWEEN %d AND %d THEN 1 ELSE 0 END) as medium_readers, "
-        "SUM(CASE WHEN active_readers > %d THEN 1 ELSE 0 END) as high_readers "
-        "FROM operation_history WHERE timestamp > datetime('now', '-1 day');",
-        BUCKET1_MAX, BUCKET1_MAX + 1, BUCKET2_MAX, BUCKET2_MAX);
+        "SUM(CASE WHEN active_readers BETWEEN 0 AND %d THEN 1 ELSE 0 END) as low_readers, "
+	"SUM(CASE WHEN active_readers BETWEEN %d AND %d THEN 1 ELSE 0 END) as medium_readers, "
+	"SUM(CASE WHEN active_readers BETWEEN %d AND %d THEN 1 ELSE 0 END) as high_readers, "
+	"SUM(CASE WHEN active_readers > %d THEN 1 ELSE 0 END) as very_high_readers "
+	"FROM operation_history WHERE timestamp > datetime('now', '-1 day');",
+	BUCKET1_MAX,
+	BUCKET1_MAX + 1, BUCKET2_MAX,
+	BUCKET2_MAX + 1, BUCKET3_MAX,
+	BUCKET3_MAX);
     
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -503,16 +588,349 @@ void handle_reader() {
     print_html_footer();
 }
 
-// FIXED: Memory management with NULL checks
-void handle_writer() {
+/*
+ * Handle POST /login
+ *
+ * Authentication flow:
+ *
+ * authenticated_username + password
+ *        ↓
+ * authenticate_user()
+ *        ↓
+ * valid?
+ *   NO ─────→ 401
+ *   YES
+ *        ↓
+ * create_session()
+ *        ↓
+ * Set-Cookie
+ *        ↓
+ * 200 OK
+ */
+void handle_login() {
     char *username = NULL;
+    char *password = NULL;
+
+    int user_id = 0;
+    char role[32] = {0};
+
+    char session_id[SESSION_ID_HEX_LENGTH + 1] = {0};
+
+    parse_login_data(&username, &password);
+
+    /*
+     * Missing credentials.
+     */
+    if (username== NULL ||
+        password == NULL ||
+        strlen(username) == 0 ||
+        strlen(password) == 0) {
+
+        log_auth_event(
+            0,
+            username ? username : "",
+            "LOGIN_FAILED",
+            0
+        );
+
+        free(username);
+        free(password);
+
+        printf("Status: 401 Unauthorized\r\n");
+        printf("Content-Type: application/json\r\n");
+        printf("\r\n");
+
+        printf(
+            "{\"success\":false,\"error\":\"Invalid credentials\"}\n"
+        );
+
+        return;
+    }
+
+    /*
+     * Authenticate against the users table.
+     */
+    int result = authenticate_user(
+        username,
+        password,
+        &user_id,
+        role,
+        sizeof(role)
+    );
+
+    /*
+     * Clear plaintext password from memory as soon as possible.
+     */
+    sodium_memzero(
+        password,
+        strlen(password)
+    );
+
+    free(password);
+    password = NULL;
+
+    if (result != AUTH_SUCCESS) {
+
+        log_auth_event(
+            0,
+            username,
+            "LOGIN_FAILED",
+            0
+        );
+
+        free(username);
+
+        printf("Status: 401 Unauthorized\r\n");
+        printf("Content-Type: application/json\r\n");
+        printf("\r\n");
+
+        printf(
+            "{\"success\":false,\"error\":\"Invalid credentials\"}\n"
+        );
+
+        return;
+    }
+
+    /*
+     * Credentials are correct.
+     * Create a server-side session.
+     */
+    result = create_session(
+        user_id,
+        session_id,
+        sizeof(session_id)
+    );
+
+    if (result != AUTH_SUCCESS) {
+
+        log_auth_event(
+            user_id,
+            username,
+            "LOGIN_SESSION_FAILED",
+            0
+        );
+
+        free(username);
+
+        printf("Status: 500 Internal Server Error\r\n");
+        printf("Content-Type: application/json\r\n");
+        printf("\r\n");
+
+        printf(
+            "{\"success\":false,\"error\":\"Could not create session\"}\n"
+        );
+
+        return;
+    }
+
+    /*
+     * Record successful authentication.
+     */
+    log_auth_event(
+        user_id,
+        username,
+        "LOGIN",
+        1
+    );
+
+    free(username);
+
+    /*
+     * Send the session cookie.
+     *
+     * HttpOnly:
+     * JavaScript cannot directly read the session token.
+     *
+     * SameSite=Lax:
+     * Helps reduce cross-site request risks.
+     *
+     * Path=/:
+     * Cookie applies to the whole application.
+     *
+     * Max-Age:
+     * Matches the 30-minute server-side session lifetime.
+     */
+    printf(
+        "Set-Cookie: session_id=%s; "
+        "Max-Age=1800; "
+        "Path=/; "
+        "HttpOnly; "
+        "SameSite=Lax\r\n",
+        session_id
+    );
+
+    printf("Content-Type: application/json\r\n");
+    printf("\r\n");
+
+    printf(
+        "{\"success\":true,\"role\":\"%s\"}\n",
+        role
+    );
+}
+
+/*
+ * Handle POST /logout
+ */
+void handle_logout() {
+    const char *cookie_header = getenv("HTTP_COOKIE");
+
+    char session_id[SESSION_ID_HEX_LENGTH + 1] = {0};
+
+    /*
+     * No cookie means there is nothing to destroy.
+     * We still return success so logout is idempotent.
+     */
+    if (cookie_header == NULL ||
+        extract_session_id_from_cookie(
+            cookie_header,
+            session_id,
+            sizeof(session_id)
+        ) != AUTH_SUCCESS) {
+
+        printf(
+            "Set-Cookie: session_id=; "
+            "Max-Age=0; "
+            "Path=/; "
+            "HttpOnly; "
+            "SameSite=Lax\r\n"
+        );
+
+        printf("Content-Type: application/json\r\n");
+        printf("\r\n");
+
+        printf(
+            "{\"success\":true,\"message\":\"Logged out\"}\n"
+        );
+
+        return;
+    }
+
+    /*
+     * Determine which user owns the session before deleting it.
+     */
+    int user_id = 0;
+    char role[32] = {0};
+	char authenticated_username[100] = {0};
+
+	int validation_result =validate_session(
+	    session_id,
+	    &user_id,
+	    authenticated_username,
+	    sizeof(authenticated_username),
+	    role,
+	    sizeof(role)
+	);
+
+    if (validation_result == AUTH_SUCCESS) {
+
+        /*
+         * We don't currently expose the authenticated_username from
+         * validate_session(), so use the user ID for
+         * identifying the logout event.
+         */
+        destroy_session(session_id);
+
+	log_auth_event(
+	    user_id,
+	    authenticated_username,
+	    "LOGOUT",
+	    1
+	);
+
+    } else {
+        /*
+         * Even if the session is already expired/invalid,
+         * remove it if present.
+         */
+        destroy_session(session_id);
+    }
+
+    /*
+     * Expire the browser cookie immediately.
+     */
+    printf(
+        "Set-Cookie: session_id=; "
+        "Max-Age=0; "
+        "Path=/; "
+        "HttpOnly; "
+        "SameSite=Lax\r\n"
+    );
+
+    printf("Content-Type: application/json\r\n");
+    printf("\r\n");
+
+    printf(
+        "{\"success\":true,\"message\":\"Logged out\"}\n"
+    );
+}
+
+/*
+ * Authenticate the current HTTP request.
+ *
+ * Returns:
+ *   AUTH_SUCCESS          -> authenticated
+ *   AUTH_INVALID_SESSION  -> no/invalid/expired session
+ *   AUTH_DATABASE_ERROR   -> database problem
+ *
+ * On success:
+ *   user_id receives the authenticated user's ID
+ *   role receives the server-side role
+ */
+int authenticate_request(
+    int *user_id,
+    char *authenticated_username,
+    size_t authenticated_username_size,
+    char *role,
+    size_t role_size
+) {
+    const char *cookie_header = getenv("HTTP_COOKIE");
+
+    if (cookie_header == NULL) {
+        return AUTH_INVALID_SESSION;
+    }
+
+    char session_id[SESSION_ID_HEX_LENGTH + 1] = {0};
+
+    if (extract_session_id_from_cookie(
+            cookie_header,
+            session_id,
+            sizeof(session_id)) != AUTH_SUCCESS) {
+        return AUTH_INVALID_SESSION;
+    }
+
+    return validate_session(
+        session_id,
+        user_id,
+        authenticated_username,
+        authenticated_username_size,
+        role,
+        role_size
+    );
+}
+
+// FIXED: Memory management with NULL checks
+void handle_writer_authenticated(
+    int authenticated_user_id,
+    const char *authenticated_username,
+    const char *authenticated_role
+) {
     char *message = NULL;
     char *client_type = NULL;
     char *client_id = generate_client_id();
     long long start_time = current_timestamp();
     int success = 0;
-    
-    parse_post_data(&username, &message, &client_type);
+    (void)authenticated_user_id;
+    (void)authenticated_role;
+
+    char *ignored_username = NULL;
+
+    parse_post_data(
+        &ignored_username,
+        &message,
+        &client_type
+    );
+
+    free(ignored_username);
     
     printf("Content-type: text/html\n\n");
     printf("<!DOCTYPE html>");
@@ -543,11 +961,13 @@ void handle_writer() {
     
     printf("<main class=\"main-content\">");
     
-    if (username && message && strlen(username) > 0 && strlen(message) > 0) {
+    if (message && strlen(message) > 0 &&
+	    authenticated_username &&
+	    strlen(authenticated_username) > 0) {
         // Acquire write lock
         if (acquire_write_lock(client_id) == SUCCESS) {
             // Write message to database
-            if (write_message(username, message) == SUCCESS) {
+            if (write_message(authenticated_username, message) == SUCCESS) {
                 success = 1;
                 
                 // SUCCESS UI
@@ -563,9 +983,9 @@ void handle_writer() {
                 printf("<div class=\"message-preview\">");
                 printf("<div class=\"preview-header\">Message Preview</div>");
                 printf("<div class=\"preview-card\">");
-                printf("<div class=\"preview-avatar\">%c</div>", username[0] ? toupper(username[0]) : 'U');
+                printf("<div class=\"preview-avatar\">%c</div>", authenticated_username[0] ? toupper(authenticated_username[0]) : 'U');
                 printf("<div class=\"preview-content\">");
-                printf("<div class=\"preview-username\">%s</div>", username);
+                printf("<div class=\"preview-authenticated_username\">%s</div>", authenticated_username);
                 printf("<div class=\"preview-message\">%s</div>", message);
                 printf("<div class=\"preview-time\">Just now</div>");
                 printf("</div>");
@@ -605,7 +1025,7 @@ void handle_writer() {
         printf("<div class=\"error-container\">");
         printf("<div class=\"error-icon\">📝</div>");
         printf("<h1 class=\"error-title\">Missing Information</h1>");
-        printf("<p class=\"error-subtitle\">Please provide both username and message to post.</p>");
+        printf("<p class=\"error-subtitle\">Please provide both authenticated_username and message to post.</p>");
         printf("</div>");
     }
     
@@ -709,7 +1129,6 @@ void handle_writer() {
     
     // FIXED: Proper memory management with NULL checks
     free(client_id);
-    if (username) free(username);
     if (message) free(message);
     if (client_type) free(client_type);
 }
@@ -1233,6 +1652,88 @@ void debug_daily_load() {
     pthread_mutex_unlock(&db_mutex);
 }
 
+/*
+ * Handle GET /me
+ *
+ * Returns information about the currently authenticated user.
+ */
+void handle_me() {
+    const char *cookie_header = getenv("HTTP_COOKIE");
+
+    char session_id[SESSION_ID_HEX_LENGTH + 1] = {0};
+    int user_id = 0;
+    char username[100] = {0};
+    char role[32] = {0};
+
+    /*
+     * No cookie means the client is not authenticated.
+     */
+    if (cookie_header == NULL ||
+        extract_session_id_from_cookie(
+            cookie_header,
+            session_id,
+            sizeof(session_id)
+        ) != AUTH_SUCCESS) {
+
+        printf("Status: 401 Unauthorized\r\n");
+        printf("Content-Type: application/json\r\n");
+        printf("\r\n");
+
+        printf(
+            "{\"authenticated\":false,"
+            "\"error\":\"Authentication required\"}\n"
+        );
+
+        return;
+    }
+
+    /*
+     * Validate the server-side session.
+     *
+     * IMPORTANT:
+     * Username and role come from the database/session,
+     * not from the client.
+     */
+    int result = validate_session(
+        session_id,
+        &user_id,
+        username,
+        sizeof(username),
+        role,
+        sizeof(role)
+    );
+
+    if (result != AUTH_SUCCESS) {
+
+        printf("Status: 401 Unauthorized\r\n");
+        printf("Content-Type: application/json\r\n");
+        printf("\r\n");
+
+        printf(
+            "{\"authenticated\":false,"
+            "\"error\":\"Invalid or expired session\"}\n"
+        );
+
+        return;
+    }
+
+    /*
+     * Successfully authenticated.
+     */
+    printf("Content-Type: application/json\r\n");
+    printf("\r\n");
+
+    printf(
+        "{\"authenticated\":true,"
+        "\"user_id\":%d,"
+        "\"username\":\"%s\","
+        "\"role\":\"%s\"}\n",
+        user_id,
+        username,
+        role
+    );
+}
+
 // FIXED: Enhanced main function with database resilience
 int main() {
     // Initialize database with retry mechanism
@@ -1280,46 +1781,121 @@ int main() {
     }
     
     if (path_info == NULL) {
-        // Default to reader view
-        handle_reader();
-    } else if (strcmp(path_info, "/reader") == 0) {
-        handle_reader();
-    } else if (strcmp(path_info, "/writer") == 0 && request_method && strcmp(request_method, "POST") == 0) {
-        handle_writer();
-    } else if (strcmp(path_info, "/real_dashboard") == 0) {
-        handle_real_dashboard();
-    } else if (strcmp(path_info, "/real_stats") == 0) {
-        handle_real_stats();
-    } else if (strcmp(path_info, "/status") == 0) {
-        handle_status_json();
-    } else if (strcmp(path_info, "/historical") == 0) {
-        handle_historical_data();
-    } else if (strcmp(path_info, "/concurrency-stats") == 0) {
-        handle_concurrency_stats();
-    } else if (strcmp(path_info, "/daily-load") == 0) {
-        handle_daily_load();
-    } else if (strcmp(path_info, "/performance") == 0) {
-        handle_performance_metrics();
-} else if (strcmp(path_info, "/debug-history") == 0) {
-    debug_operation_history(); 
-} else if (strcmp(path_info, "/debug-op-timezone") == 0) {
-    debug_operation_history_timezone();
-} else if (strcmp(path_info, "/debug-daily-load") == 0) {
-    debug_daily_load();
-   } else if (strcmp(path_info, "/live-active-clients") == 0) {
-        handle_live_active_clients(); 
-   } else if (strcmp(path_info, "/health") == 0) {
-        // FIXED: Add health check endpoint
-        printf("Content-type: application/json\n\n");
-        if (check_database_health() == SUCCESS) {
-            printf("{\"status\": \"healthy\", \"database\": \"connected\"}\n");
-        } else {
-            printf("{\"status\": \"degraded\", \"database\": \"disconnected\"}\n");
-        }
-    } else {
-        printf("Content-type: text/html\n\n");
-        printf("<html><body><h1>404 - Page Not Found</h1></body></html>");
-    }
+    	// Default to reader view
+    	handle_reader();
+
+	} else if (strcmp(path_info, "/reader") == 0) {
+	    handle_reader();
+
+	} else if (strcmp(path_info, "/login") == 0 &&
+		   request_method &&
+		   strcmp(request_method, "POST") == 0) {
+	    handle_login();
+
+	} else if (strcmp(path_info, "/logout") == 0 &&
+		   request_method &&
+		   strcmp(request_method, "POST") == 0) {
+	    handle_logout();
+
+	} else if (strcmp(path_info, "/me") == 0 &&
+		   request_method &&
+		   strcmp(request_method, "GET") == 0) {
+	    handle_me();
+
+	} else if (strcmp(path_info, "/writer") == 0 &&
+           request_method &&
+           strcmp(request_method, "POST") == 0) {
+
+	    int authenticated_user_id = 0;
+
+	    char authenticated_username[100] = {0};
+	    char authenticated_role[32] = {0};
+
+	    int auth_result = authenticate_request(
+		&authenticated_user_id,
+		authenticated_username,
+		sizeof(authenticated_username),
+		authenticated_role,
+		sizeof(authenticated_role)
+	    );
+
+	    if (auth_result == AUTH_INVALID_SESSION) {
+
+		printf("Status: 401 Unauthorized\r\n");
+		printf("Content-Type: application/json\r\n");
+		printf("\r\n");
+
+		printf(
+		    "{\"success\":false,\"error\":\"Authentication required\"}\n"
+		);
+
+	    } else if (auth_result == AUTH_DATABASE_ERROR) {
+
+		printf("Status: 500 Internal Server Error\r\n");
+		printf("Content-Type: application/json\r\n");
+		printf("\r\n");
+
+		printf(
+		    "{\"success\":false,\"error\":\"Authentication service unavailable\"}\n"
+		);
+
+	    } else if (!is_writer_or_admin(authenticated_role)) {
+
+		printf("Status: 403 Forbidden\r\n");
+		printf("Content-Type: application/json\r\n");
+		printf("\r\n");
+
+		printf(
+		    "{\"success\":false,\"error\":\"Writer authorization required\"}\n"
+		);
+
+	    } else {
+
+		/*
+		 * Authentication and authorization succeeded.
+		 *
+		 * Pass the authenticated identity to the writer handler.
+		 */
+		handle_writer_authenticated(
+		    authenticated_user_id,
+		    authenticated_username,
+		    authenticated_role
+		);
+	    }
+	    } else if (strcmp(path_info, "/real_dashboard") == 0) {
+		handle_real_dashboard();
+	    } else if (strcmp(path_info, "/real_stats") == 0) {
+		handle_real_stats();
+	    } else if (strcmp(path_info, "/status") == 0) {
+		handle_status_json();
+	    } else if (strcmp(path_info, "/historical") == 0) {
+		handle_historical_data();
+	    } else if (strcmp(path_info, "/concurrency-stats") == 0) {
+		handle_concurrency_stats();
+	    } else if (strcmp(path_info, "/daily-load") == 0) {
+		handle_daily_load();
+	    } else if (strcmp(path_info, "/performance") == 0) {
+		handle_performance_metrics();
+	    } else if (strcmp(path_info, "/debug-history") == 0) {
+	        debug_operation_history(); 
+	    } else if (strcmp(path_info, "/debug-op-timezone") == 0) {
+	        debug_operation_history_timezone();
+	    } else if (strcmp(path_info, "/debug-daily-load") == 0) {
+	        debug_daily_load();
+	    } else if (strcmp(path_info, "/live-active-clients") == 0) {
+		 handle_live_active_clients(); 
+   	    } else if (strcmp(path_info, "/health") == 0) {
+		// FIXED: Add health check endpoint
+		printf("Content-type: application/json\n\n");
+		if (check_database_health() == SUCCESS) {
+		    printf("{\"status\": \"healthy\", \"database\": \"connected\"}\n");
+		}else {
+		    printf("{\"status\": \"degraded\", \"database\": \"disconnected\"}\n");
+		}
+	    } else {
+		printf("Content-type: text/html\n\n");
+		printf("<html><body><h1>404 - Page Not Found</h1></body></html>");
+	    }
     
     close_database();
     return 0;

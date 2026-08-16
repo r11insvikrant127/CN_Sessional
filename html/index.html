@@ -16,6 +16,7 @@
                     ConcurrentSync
                 </h1>
                 <div class="header-controls">
+                	<div id="authControls"></div>
                     <button class="theme-toggle" id="themeToggle">
                         <span class="theme-icon">🌙</span>
                     </button>
@@ -56,6 +57,53 @@
             </div>
 
             <!-- Modified Actions Grid - 2x2 Layout -->
+		    <div id="loginSection" class="writer-form-container">
+
+		    <div class="page-header">
+			<h2>Writer Login</h2>
+			<p class="page-subtitle">
+			    Authenticate to access Writer Mode
+			</p>
+		    </div>
+
+		    <form id="loginForm" class="message-form">
+
+			<div class="form-group">
+			    <label for="loginUsername">Username</label>
+			    <input
+				type="text"
+				id="loginUsername"
+				required
+				maxlength="50"
+				autocomplete="username"
+				placeholder="Enter username">
+			</div>
+
+			<div class="form-group">
+			    <label for="loginPassword">Password</label>
+			    <input
+				type="password"
+				id="loginPassword"
+				required
+				autocomplete="current-password"
+				placeholder="Enter password">
+			</div>
+
+			<div id="loginError"
+			     style="display:none;"
+			     class="error-container">
+			</div>
+
+			<div class="form-actions">
+			    <button type="submit"
+				    class="btn btn-secondary"
+				    id="loginBtn">
+				🔐 Login
+			    </button>
+			</div>
+
+		    </form>
+		</div>
             <div class="actions-grid">
                 <div class="action-row">
                     <div class="action-card reader-card">
@@ -155,6 +203,79 @@ function updateStats() {
             console.error('Error fetching stats:', error);
             // Optional: Show offline indicator
         });
+}
+const loginForm = document.getElementById('loginForm');
+
+if (loginForm) {
+
+    loginForm.addEventListener('submit', function(e) {
+
+        e.preventDefault();
+
+        const username =
+            document.getElementById('loginUsername').value.trim();
+
+        const password =
+            document.getElementById('loginPassword').value;
+
+        const loginBtn =
+            document.getElementById('loginBtn');
+
+        const loginError =
+            document.getElementById('loginError');
+
+        if (!username || !password) {
+            return;
+        }
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = '⏳ Logging in...';
+
+        const formData = new URLSearchParams();
+
+        formData.append('username', username);
+        formData.append('password', password);
+
+        fetch('/CN_Sessional/cgi-bin/server.cgi/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type':
+                    'application/x-www-form-urlencoded'
+            },
+            credentials: 'same-origin',
+            body: formData
+        })
+        .then(async response => {
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(
+                    data.error || 'Login failed'
+                );
+            }
+
+            return data;
+        })
+        .then(data => {
+
+            // Never store the password or session ID
+            window.location.href = 'writer.html';
+
+        })
+        .catch(error => {
+
+            loginError.style.display = 'block';
+
+            loginError.innerHTML =
+                '<div class="error-icon">❌</div>' +
+                '<p>' + error.message + '</p>';
+
+            loginBtn.disabled = false;
+            loginBtn.textContent = '🔐 Login';
+        });
+
+    });
 }
 
 // More frequent updates

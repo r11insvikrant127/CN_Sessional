@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -378,8 +379,8 @@ int calculate_performance_metrics() {
         
         // AVAILABILITY: Based on system uptime and recent activity
         "SELECT 'availability', "
-        "   COALESCE((SELECT 100 - (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / GREATEST(COUNT(*), 1)) FROM access_logs WHERE client_type = 'reader' AND timestamp > datetime('now', '-1 day')), 99), "
-        "   COALESCE((SELECT 100 - (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / GREATEST(COUNT(*), 1)) FROM access_logs WHERE client_type = 'writer' AND timestamp > datetime('now', '-1 day')), 97);";
+        "   COALESCE((SELECT 100 - (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / MAX(COUNT(*), 1)) FROM access_logs WHERE client_type = 'reader' AND timestamp > datetime('now', '-1 day')), 99), "
+"   COALESCE((SELECT 100 - (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / MAX(COUNT(*), 1)) FROM access_logs WHERE client_type = 'writer' AND timestamp > datetime('now', '-1 day')), 97);";
     
     char *err_msg = NULL;
     int rc = sqlite3_exec(db, metrics_sql, NULL, NULL, &err_msg);
