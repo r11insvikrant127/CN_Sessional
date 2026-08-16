@@ -80,8 +80,37 @@ const char *create_tables =
     "writer_score INTEGER DEFAULT 0,"
     "recorded_at DATETIME DEFAULT (datetime('now', 'localtime'))"  // CHANGED
     ");"
-        
-     "INSERT OR IGNORE INTO system_stats (id, total_reads, total_writes, current_readers, current_writers) VALUES (1, 0, 0, 0, 0);";
+    
+    
+    "CREATE TABLE IF NOT EXISTS users ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "username TEXT NOT NULL UNIQUE,"
+    "password_hash TEXT NOT NULL,"
+    "role TEXT NOT NULL CHECK(role IN ('reader', 'writer', 'admin')),"
+    "created_at DATETIME DEFAULT (datetime('now', 'localtime'))"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS sessions ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "session_id TEXT NOT NULL UNIQUE,"
+    "user_id INTEGER NOT NULL,"
+    "created_at DATETIME DEFAULT (datetime('now', 'localtime')),"
+    "expires_at DATETIME NOT NULL,"
+    "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS auth_logs ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "user_id INTEGER,"
+    "username TEXT,"
+    "action TEXT NOT NULL,"
+    "success INTEGER NOT NULL,"
+    "timestamp DATETIME DEFAULT (datetime('now', 'localtime')),"
+    "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL"
+    ");"
+
+
+    "INSERT OR IGNORE INTO system_stats (id, total_reads, total_writes, current_readers, current_writers) VALUES (1, 0, 0, 0, 0);";
     
     char *err_msg = NULL;
     rc = sqlite3_exec(db, create_tables, NULL, NULL, &err_msg);
@@ -93,12 +122,16 @@ const char *create_tables =
     }
     
     // FIXED: Add indexes with non-fatal error handling
-    const char *create_indexes = 
+    const char *create_indexes =
         "CREATE INDEX IF NOT EXISTS idx_operation_history_timestamp ON operation_history(timestamp);"
         "CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs(timestamp);"
         "CREATE INDEX IF NOT EXISTS idx_access_logs_client_type ON access_logs(client_type);"
         "CREATE INDEX IF NOT EXISTS idx_access_logs_success ON access_logs(success);"
-        "CREATE INDEX IF NOT EXISTS idx_performance_metrics_recorded ON performance_metrics(recorded_at);";
+        "CREATE INDEX IF NOT EXISTS idx_performance_metrics_recorded ON performance_metrics(recorded_at);"
+        "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);"
+        "CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);"
+        "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);"
+        "CREATE INDEX IF NOT EXISTS idx_auth_logs_timestamp ON auth_logs(timestamp);";
     
     rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
