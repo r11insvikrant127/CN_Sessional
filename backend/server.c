@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <ctype.h>
+#include <errno.h>
 #include "database.h"
 #include "auth.h"
 #include <stdio.h>
@@ -45,48 +46,144 @@ long long current_timestamp() {
 
 // Function to parse POST data
 void parse_post_data(char **username, char **message, char **client_type) {
+    const size_t MAX_POST_SIZE = 4096;
+    const size_t MAX_CLIENT_TYPE_INPUT_LENGTH = 32;
+
+    if (username == NULL || message == NULL || client_type == NULL) {
+        return;
+    }
+
+    *username = NULL;
+    *message = NULL;
+    *client_type = NULL;
+
     char *content_length_str = getenv("CONTENT_LENGTH");
-    int content_length = 0;
-    
-    if (content_length_str) {
-        content_length = atoi(content_length_str);
+
+    if (content_length_str == NULL || *content_length_str == '\0') {
+        return;
     }
-    
-    if (content_length > 0) {
-        char *post_data = malloc(content_length + 1);
-        fread(post_data, 1, content_length, stdin);
-        post_data[content_length] = '\0';
-        
-        // Simple parsing with URL decoding
-        char *token = strtok(post_data, "&");
-        while (token) {
-            char *value_start = NULL;
-            char decoded_value[256]; // Buffer for decoded value
-            
-            if (strncmp(token, "username=", 9) == 0) {
-		    value_start = token + 9;
-		} else if (strncmp(token, "message=", 8) == 0) {
-		    value_start = token + 8;
-		} else if (strncmp(token, "client_type=", 12) == 0) {
-		    value_start = token + 12;
-		}
 
-		if (value_start) {
-		    url_decode(value_start, decoded_value, sizeof(decoded_value));
+    /*
+     * Parse CONTENT_LENGTH strictly.
+     * Only decimal digits are accepted and the value must be
+     * within the configured request-size limit.
+     */
+    char *endptr = NULL;
+    errno = 0;
 
-		    if (strncmp(token, "username=", 9) == 0) {
-			*username = strdup(decoded_value);
-		    } else if (strncmp(token, "message=", 8) == 0) {
-			*message = strdup(decoded_value);
-		    } else if (strncmp(token, "client_type=", 12) == 0) {
-			*client_type = strdup(decoded_value);
-		    }
-		}
-            
-            token = strtok(NULL, "&");
-        }
+    unsigned long parsed_length =
+        strtoul(content_length_str, &endptr, 10);
+
+    if (errno != 0 ||
+        endptr == content_length_str ||
+        *endptr != '\0' ||
+        parsed_length == 0 ||
+        parsed_length > MAX_POST_SIZE) {
+        return;
+    }
+
+    size_t content_length = (size_t)parsed_length;
+
+    char *post_data = malloc(content_length + 1);
+
+    if (post_data == NULL) {
+        return;
+    }
+
+    size_t bytes_read = fread(
+        post_data,
+        1,
+        content_length,
+        stdin
+    );
+
+    if (bytes_read != content_length) {
         free(post_data);
+        return;
     }
+
+    post_data[bytes_read] = '\0';
+
+    char *token = strtok(post_data, "&");
+
+    while (token != NULL) {
+        const char *value_start = NULL;
+        size_t max_length = 0;
+        char decoded_value[1024];
+
+        if (strncmp(token, "username=", 9) == 0) {
+            value_start = token + 9;
+            max_length = MAX_USERNAME_LENGTH;
+        } else if (strncmp(token, "message=", 8) == 0) {
+            value_start = token + 8;
+            max_length = MAX_MESSAGE_LENGTH;
+        } else if (strncmp(token, "client_type=", 12) == 0) {
+            value_start = token + 12;
+            max_length = MAX_CLIENT_TYPE_INPUT_LENGTH;
+        }
+
+        if (value_start != NULL) {
+            url_decode(
+                value_start,
+                decoded_value,
+                sizeof(decoded_value)
+            );
+
+            size_t decoded_length = strlen(decoded_value);
+
+            /*
+             * Reject oversized fields instead of silently truncating them.
+             */
+            if (decoded_length > max_length) {
+                free(*username);
+                free(*message);
+                free(*client_type);
+
+                *username = NULL;
+                *message = NULL;
+                *client_type = NULL;
+
+                free(post_data);
+                return;
+            }
+
+            char **destination = NULL;
+
+            if (strncmp(token, "username=", 9) == 0) {
+                destination = username;
+            } else if (strncmp(token, "message=", 8) == 0) {
+                destination = message;
+            } else if (strncmp(token, "client_type=", 12) == 0) {
+                destination = client_type;
+            }
+
+            if (destination != NULL) {
+                char *value = malloc(decoded_length + 1);
+
+                if (value == NULL) {
+                    free(*username);
+                    free(*message);
+                    free(*client_type);
+
+                    *username = NULL;
+                    *message = NULL;
+                    *client_type = NULL;
+
+                    free(post_data);
+                    return;
+                }
+
+                memcpy(value, decoded_value, decoded_length + 1);
+
+                free(*destination);
+                *destination = value;
+            }
+        }
+
+        token = strtok(NULL, "&");
+    }
+
+    free(post_data);
 }
 
 /*
@@ -1059,8 +1156,22 @@ void handle_writer_authenticated(
                 printf("<div class=\"preview-card\">");
                 printf("<div class=\"preview-avatar\">%c</div>", authenticated_username[0] ? toupper(authenticated_username[0]) : 'U');
                 printf("<div class=\"preview-content\">");
-                printf("<div class=\"preview-authenticated_username\">%s</div>", authenticated_username);
-                printf("<div class=\"preview-message\">%s</div>", message);
+
+                char escaped_username[512];
+		char escaped_message[1024];
+
+		html_escape(authenticated_username,
+			    escaped_username,
+			    sizeof(escaped_username));
+
+		html_escape(message,
+			    escaped_message,
+			    sizeof(escaped_message));
+                printf("<div class=\"preview-authenticated_username\">%s</div>",
+		       escaped_username);
+
+		printf("<div class=\"preview-message\">%s</div>",
+		       escaped_message);
                 printf("<div class=\"preview-time\">Just now</div>");
                 printf("</div>");
                 printf("</div>");

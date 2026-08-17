@@ -570,6 +570,62 @@ int update_stats(int readers_delta, int writers_delta, int reads_delta, int writ
     return SUCCESS;
 }
 
+
+/*
+ * Escape untrusted text before inserting it into HTML.
+ * Prevents stored/reflected XSS attacks.
+ */
+void html_escape(const char *src, char *dest, size_t dest_size) {
+    size_t i = 0;
+    size_t j = 0;
+
+    if (src == NULL || dest == NULL || dest_size == 0) {
+        return;
+    }
+
+    while (src[i] != '\0' && j < dest_size - 1) {
+        const char *replacement = NULL;
+
+        switch (src[i]) {
+            case '&':
+                replacement = "&amp;";
+                break;
+
+            case '<':
+                replacement = "&lt;";
+                break;
+
+            case '>':
+                replacement = "&gt;";
+                break;
+
+            case '"':
+                replacement = "&quot;";
+                break;
+
+            case '\'':
+                replacement = "&#39;";
+                break;
+
+            default:
+                dest[j++] = src[i++];
+                continue;
+        }
+
+        size_t len = strlen(replacement);
+
+        if (j + len >= dest_size) {
+            break;
+        }
+
+        memcpy(dest + j, replacement, len);
+        j += len;
+        i++;
+    }
+
+    dest[j] = '\0';
+}
+
 // FIXED: Ensure valid timestamps
 int read_messages(FILE *output) {
     pthread_mutex_lock(&db_mutex);
@@ -618,18 +674,23 @@ int read_messages(FILE *output) {
                 }
             }
             
+            char escaped_username[512];
+	    char escaped_message[1024];
+
+	    html_escape(username, escaped_username, sizeof(escaped_username));
+	    html_escape(message, escaped_message, sizeof(escaped_message));
             // Display message card
             fprintf(output, "<div class='message-card'>");
             fprintf(output, "<div class='message-header'>");
             fprintf(output, "<div class='user-info'>");
             fprintf(output, "<div class='user-avatar'>%c</div>", username[0] ? toupper(username[0]) : 'U');
             fprintf(output, "<div class='user-details'>");
-            fprintf(output, "<div class='username'>%s</div>", username);
+            fprintf(output, "<div class='username'>%s</div>", escaped_username);
             fprintf(output, "<div class='message-time'>%s</div>", display_time);
             fprintf(output, "</div>");
             fprintf(output, "</div>");
             fprintf(output, "</div>");
-            fprintf(output, "<div class='message-content'>%s</div>", message);
+            fprintf(output, "<div class='message-content'>%s</div>", escaped_message);
             fprintf(output, "</div>");
             
             message_count++;

@@ -32,5 +32,6 @@ int update_active_counts(int readers, int writers);
 
 // Helper functions
 void url_decode(const char *src, char *dest, size_t dest_size);
+void html_escape(const char *src, char *dest, size_t dest_size);
 
 #endif
