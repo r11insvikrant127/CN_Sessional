@@ -2093,47 +2093,87 @@ int main() {
 
 	    if (auth_result == AUTH_INVALID_SESSION) {
 
-		printf("Status: 401 Unauthorized\r\n");
-		printf("Content-Type: application/json\r\n");
-		printf("\r\n");
+	    /*
+	     * Authentication failed: no valid session.
+	     *
+	     * The identity is unknown, so user_id=0 and username=""
+	     * are recorded.
+	     */
+	    log_auth_event(
+		0,
+		"",
+		"WRITER_AUTH_FAILED",
+		0
+	    );
 
-		printf(
-		    "{\"success\":false,\"error\":\"Authentication required\"}\n"
-		);
+	    printf("Status: 401 Unauthorized\r\n");
+	    printf("Content-Type: application/json\r\n");
+	    printf("\r\n");
 
-	    } else if (auth_result == AUTH_DATABASE_ERROR) {
+	    printf(
+		"{\"success\":false,\"error\":\"Authentication required\"}\n"
+	    );
 
-		printf("Status: 500 Internal Server Error\r\n");
-		printf("Content-Type: application/json\r\n");
-		printf("\r\n");
+	} else if (auth_result == AUTH_DATABASE_ERROR) {
 
-		printf(
-		    "{\"success\":false,\"error\":\"Authentication service unavailable\"}\n"
-		);
+	    /*
+	     * Authentication could not be completed because the
+	     * authentication/database service failed.
+	     */
+	    log_auth_event(
+		authenticated_user_id,
+		authenticated_username,
+		"WRITER_AUTH_DB_ERROR",
+		0
+	    );
 
-	    } else if (!is_writer_or_admin(authenticated_role)) {
+	    printf("Status: 500 Internal Server Error\r\n");
+	    printf("Content-Type: application/json\r\n");
+	    printf("\r\n");
 
-		printf("Status: 403 Forbidden\r\n");
-		printf("Content-Type: application/json\r\n");
-		printf("\r\n");
+	    printf(
+		"{\"success\":false,\"error\":\"Authentication service unavailable\"}\n"
+	    );
 
-		printf(
-		    "{\"success\":false,\"error\":\"Writer authorization required\"}\n"
-		);
+	} else if (!is_writer_or_admin(authenticated_role)) {
 
-	    } else {
+	    /*
+	     * The user is authenticated, but does not have permission
+	     * to use the writer functionality.
+	     */
+	    log_auth_event(
+		authenticated_user_id,
+		authenticated_username,
+		"WRITER_FORBIDDEN",
+		0
+	    );
 
-		/*
-		 * Authentication and authorization succeeded.
-		 *
-		 * Pass the authenticated identity to the writer handler.
-		 */
-		handle_writer_authenticated(
-		    authenticated_user_id,
-		    authenticated_username,
-		    authenticated_role
-		);
-	    }
+	    printf("Status: 403 Forbidden\r\n");
+	    printf("Content-Type: application/json\r\n");
+	    printf("\r\n");
+
+	    printf(
+		"{\"success\":false,\"error\":\"Writer authorization required\"}\n"
+	    );
+
+	} else {
+
+	    /*
+	     * Authentication and authorization succeeded.
+	     */
+	    log_auth_event(
+		authenticated_user_id,
+		authenticated_username,
+		"WRITER_AUTHORIZED",
+		1
+	    );
+
+	    handle_writer_authenticated(
+		authenticated_user_id,
+		authenticated_username,
+		authenticated_role
+	    );
+	}
 	    } else if (strcmp(path_info, "/real_dashboard") == 0) {
 		handle_real_dashboard();
 	    } else if (strcmp(path_info, "/real_stats") == 0) {

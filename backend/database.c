@@ -32,10 +32,128 @@ int initialize_database() {
         return ERROR_DB;
     }
     
-    // Enable foreign keys and WAL mode for better concurrency
-    sqlite3_exec(db, "PRAGMA foreign_keys = ON;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA journal_mode = WAL;", NULL, NULL, NULL);
-    sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", NULL, NULL, NULL);
+    /*
+	 * Configure SQLite connection-level protections.
+	 *
+	 * foreign_keys:
+	 *   Enforces declared FOREIGN KEY constraints for this connection.
+	 *
+	 * journal_mode=WAL:
+	 *   Improves concurrent reader/writer behavior.
+	 *
+	 * synchronous=NORMAL:
+	 *   Provides a reasonable durability/performance balance with WAL.
+	 */
+	char *pragma_error = NULL;
+
+	/* Foreign-key enforcement is security/correctness critical. */
+	rc = sqlite3_exec(
+	    db,
+	    "PRAGMA foreign_keys = ON;",
+	    NULL,
+	    NULL,
+	    &pragma_error
+	);
+
+	if (rc != SQLITE_OK) {
+	    fprintf(
+		stderr,
+		"Failed to enable SQLite foreign-key enforcement: %s\n",
+		pragma_error ? pragma_error : sqlite3_errmsg(db)
+	    );
+
+	    sqlite3_free(pragma_error);
+    sqlite3_close(db);
+    db = NULL;
+
+    pthread_mutex_unlock(&db_mutex);
+    return ERROR_DB;
+}
+
+sqlite3_free(pragma_error);
+pragma_error = NULL;
+
+/*
+ * Verify that foreign-key enforcement is actually enabled
+ * on this application connection.
+ */
+sqlite3_stmt *fk_stmt = NULL;
+
+rc = sqlite3_prepare_v2(
+    db,
+    "PRAGMA foreign_keys;",
+    -1,
+    &fk_stmt,
+    NULL
+);
+
+if (rc != SQLITE_OK ||
+    sqlite3_step(fk_stmt) != SQLITE_ROW ||
+    sqlite3_column_int(fk_stmt, 0) != 1) {
+
+    fprintf(
+        stderr,
+        "SQLite foreign-key enforcement verification failed\n"
+    );
+
+    if (fk_stmt != NULL) {
+        sqlite3_finalize(fk_stmt);
+    }
+
+    sqlite3_close(db);
+    db = NULL;
+
+    pthread_mutex_unlock(&db_mutex);
+    return ERROR_DB;
+}
+
+sqlite3_finalize(fk_stmt);
+
+/*
+ * WAL mode improves concurrent reader/writer behavior.
+ */
+rc = sqlite3_exec(
+    db,
+    "PRAGMA journal_mode = WAL;",
+    NULL,
+    NULL,
+    &pragma_error
+);
+
+if (rc != SQLITE_OK) {
+    fprintf(
+        stderr,
+        "Warning: failed to enable SQLite WAL mode: %s\n",
+        pragma_error ? pragma_error : sqlite3_errmsg(db)
+    );
+}
+
+sqlite3_free(pragma_error);
+pragma_error = NULL;
+
+/*
+ * NORMAL synchronous mode is appropriate with WAL.
+ */
+rc = sqlite3_exec(
+    db,
+    "PRAGMA synchronous = NORMAL;",
+    NULL,
+    NULL,
+    &pragma_error
+);
+
+if (rc != SQLITE_OK) {
+    fprintf(
+        stderr,
+        "Warning: failed to configure SQLite synchronous mode: %s\n",
+        pragma_error ? pragma_error : sqlite3_errmsg(db)
+    );
+}
+
+sqlite3_free(pragma_error);
+
+
+
     // Wait for a short period instead of immediately failing on
 	// transient SQLite lock contention between CGI processes.
 	sqlite3_busy_timeout(db, DB_TIMEOUT_MS);
