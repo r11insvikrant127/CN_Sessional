@@ -36,6 +36,9 @@ int initialize_database() {
     sqlite3_exec(db, "PRAGMA foreign_keys = ON;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA journal_mode = WAL;", NULL, NULL, NULL);
     sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", NULL, NULL, NULL);
+    // Wait for a short period instead of immediately failing on
+	// transient SQLite lock contention between CGI processes.
+	sqlite3_busy_timeout(db, DB_TIMEOUT_MS);
     
 // Create tables if they don't exist
 const char *create_tables = 

@@ -1208,25 +1208,51 @@ void handle_writer_authenticated(
 }
 
 // FIXED handle_status_json function
-void handle_status_json() {
-    int current_readers = 0, current_writers = 0, total_reads = 0, total_writes = 0;
-    
-    printf("Content-type: application/json\n\n");
-    
-    // Get REAL data from database using the function
-    if (get_current_stats(&current_readers, &current_writers, &total_reads, &total_writes) == SUCCESS) {
-        printf("{\n");
-        printf("  \"totalReads\": %d,\n", total_reads);
-        printf("  \"totalWrites\": %d,\n", total_writes);
-        printf("  \"activeReaders\": %d,\n", current_readers);
-        printf("  \"activeWriters\": %d,\n", current_writers);
-        printf("  \"activeNow\": %d\n", current_readers + current_writers);
-        printf("}\n");
-    } else {
-        printf("{\"error\": \"Failed to retrieve statistics\"}\n");
-    }
-}
+void handle_status_json()
+{
+    int active_readers = 0;
+    int active_writers = 0;
+    int waiting_readers = 0;
+    int waiting_writers = 0;
 
+    int total_reads = 0;
+    int total_writes = 0;
+
+    printf("Content-type: application/json\n\n");
+
+    if (get_current_stats(
+            &active_readers,
+            &active_writers,
+            &total_reads,
+            &total_writes
+        ) != SUCCESS) {
+
+        printf("{\"error\":\"Failed to retrieve statistics\"}\n");
+        return;
+    }
+
+    if (get_sync_state(
+            &active_readers,
+            &active_writers,
+            &waiting_readers,
+            &waiting_writers
+        ) != SUCCESS) {
+
+        printf("{\"error\":\"Failed to retrieve synchronization state\"}\n");
+        return;
+    }
+
+    printf("{\n");
+    printf("  \"totalReads\": %d,\n", total_reads);
+    printf("  \"totalWrites\": %d,\n", total_writes);
+    printf("  \"activeReaders\": %d,\n", active_readers);
+    printf("  \"activeWriters\": %d,\n", active_writers);
+    printf("  \"waitingReaders\": %d,\n", waiting_readers);
+    printf("  \"waitingWriters\": %d,\n", waiting_writers);
+    printf("  \"activeNow\": %d\n",
+           active_readers + active_writers);
+    printf("}\n");
+}
 void handle_real_stats() {
     pthread_mutex_lock(&db_mutex);
     
@@ -1833,6 +1859,17 @@ int main() {
         printf("<p>Please check the database file and try again.</p></body></html>");
         return 1;
     }
+    if (sync_manager_init() != SUCCESS) {
+	    printf("Status: 500 Internal Server Error\r\n");
+	    printf("Content-Type: application/json\r\n");
+	    printf("\r\n");
+	    printf(
+		"{\"success\":false,\"error\":\"Synchronization initialization failed\"}\n"
+	    );
+
+	    close_database();
+	    return 1;
+	}
     
     // FIXED: Add periodic database health checks for long-running processes
     // For CGI, this is less critical since processes are short-lived,

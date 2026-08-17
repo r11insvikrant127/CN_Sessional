@@ -11,6 +11,14 @@
 #define LOCK_TIMEOUT_SECONDS 10
 #define DB_TIMEOUT_MS 5000
 
+// Cross-process synchronization
+#define RW_RESOURCE_SEM "/cn_sessional_rw_resource"
+#define RW_COUNT_SEM    "/cn_sessional_rw_count"
+#define RW_QUEUE_SEM    "/cn_sessional_rw_queue"
+#define RW_INIT_SEM     "/cn_sessional_rw_init"
+#define RW_SHM_NAME     "/cn_sessional_rw_state"
+#define RW_SHM_MAGIC    0x43535258
+
 // Server configuration
 #define MAX_BUFFER_SIZE 4096
 #define MAX_CLIENTS 100
