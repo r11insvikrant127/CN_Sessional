@@ -574,6 +574,52 @@ body {
     color: var(--text-muted);
 }
 
+
+/* Real measured performance metrics */
+.performance-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    height: calc(100% - 3rem);
+    overflow-y: auto;
+}
+
+.performance-metric-group {
+    background: var(--bg-secondary, var(--bg-card));
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    padding: 1rem;
+}
+
+.performance-metric-group h4 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+}
+
+.performance-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.performance-metric-row:last-child {
+    border-bottom: none;
+}
+
+.performance-metric-row strong {
+    white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+    .performance-metrics {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Charts */
 .charts-grid {
     display: grid;
@@ -1430,4 +1476,89 @@ body {
 
 .stat-trend.neutral {
     color: #6b7280;
+}
+
+/* =========================================================
+   Measured Performance Metrics
+   Clean two-column presentation with no internal scrollbar
+   ========================================================= */
+
+.performance-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    box-sizing: border-box;
+}
+
+.performance-metric-group {
+    background: var(--bg-card, #ffffff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 0.6rem;
+    padding: 0.65rem 0.7rem;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.performance-metric-group h4 {
+    margin: 0 0 0.45rem 0;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.performance-metric-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 24px;
+    padding: 0.22rem 0;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.performance-metric-row:last-child {
+    border-bottom: none;
+}
+
+.performance-metric-row span {
+    font-size: 0.68rem;
+    line-height: 1.2;
+    color: var(--text-secondary, #64748b);
+    min-width: 0;
+}
+
+.performance-metric-row strong {
+    font-size: 0.68rem;
+    line-height: 1.2;
+    font-weight: 700;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Keep the metrics section inside the chart card */
+.chart-container .performance-metrics {
+    margin-top: 0.15rem;
+}
+
+/* Responsive layout */
+@media (max-width: 700px) {
+    .performance-metrics {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+
+/* Measured Performance Metrics */
+#efficiencyMetrics {
+    min-height: 190px;
+}
+
+.chart-container:has(#efficiencyMetrics) {
+    height: 360px;
 }

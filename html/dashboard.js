@@ -108,32 +108,30 @@ class Dashboard {
         });
 
         // === PERFORMANCE METRICS CHART ===
-        const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+        const performanceCtx =
+            document.getElementById('performanceChart').getContext('2d');
+
         this.performanceChart = new Chart(performanceCtx, {
             type: 'bar',
             data: {
                 labels: [
-		    'Speed',
-		    'Reliability',
-		    'Concurrency',
-		    'Scalability',
-		    'Consistency',
-		    'Availability'
-		],
+                    'Reader Latency',
+                    'Writer Latency',
+                    'Reader Throughput',
+                    'Writer Throughput',
+                    'Reader Reliability',
+                    'Writer Reliability'
+                ],
                 datasets: [{
-                    label: 'Performance Score',
+                    label: 'Measured Value',
                     data: [0, 0, 0, 0, 0, 0],
                     backgroundColor: [
                         'rgba(59, 130, 246, 0.8)',
                         'rgba(239, 68, 68, 0.8)',
                         'rgba(16, 185, 129, 0.8)',
-                        'rgba(245, 158, 11, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgb(59, 130, 246)',
-                        'rgb(239, 68, 68)',
-                        'rgb(16, 185, 129)',
-                        'rgb(245, 158, 11)'
+                        'rgba(245, 158, 11, 0.8)',
+                        'rgba(139, 92, 246, 0.8)',
+                        'rgba(234, 88, 12, 0.8)'
                     ],
                     borderWidth: 2
                 }]
@@ -142,18 +140,46 @@ class Dashboard {
                 responsive: true,
                 maintainAspectRatio: false,
                 indexAxis: 'y',
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const index = context.dataIndex;
+                                const value = context.raw;
+
+                                const units = [
+                                    ' ms',
+                                    ' ms',
+                                    ' ops/sec',
+                                    ' ops/sec',
+                                    ' %',
+                                    ' %'
+                                ];
+
+                                return `${value}${units[index]}`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         beginAtZero: true,
-                        max: 100,
                         title: {
                             display: true,
-                            text: 'Performance Score (%)'
+                            text: 'Measured Value'
                         },
-                        grid: { color: 'rgba(128,128,128,0.2)' }
+                        grid: {
+                            color: 'rgba(128,128,128,0.2)'
+                        }
                     },
-                    y: { grid: { color: 'rgba(128,128,128,0.2)' } }
+                    y: {
+                        grid: {
+                            color: 'rgba(128,128,128,0.2)'
+                        }
+                    }
                 }
             }
         });
@@ -246,37 +272,38 @@ class Dashboard {
 		});
     }
     
-    async updatePerformanceChart() {
-	    try {
-		const response = await fetch(
-		    '/CN_Sessional/cgi-bin/server.cgi/performance'
-		);
+       async updatePerformanceChart() {
+        try {
+            const response = await fetch(
+                '/CN_Sessional/cgi-bin/server.cgi/performance'
+            );
 
-		if (!response.ok) {
-		    throw new Error('Performance API request failed');
-		}
+            if (!response.ok) {
+                throw new Error('Performance API request failed');
+            }
 
-		const data = await response.json();
+            const data = await response.json();
 
-		if (this.performanceChart) {
-		    this.performanceChart.data.datasets[0].data = [
-		        data.reader_speed,
-		        data.reader_reliability,
-		        data.reader_concurrency,
-		        data.reader_scalability,
-		        data.reader_consistency,
-		        data.reader_availability
-		    ];
+            if (this.performanceChart) {
+                this.performanceChart.data.datasets[0].data = [
+                    data.reader_speed_ms,
+                    data.writer_speed_ms,
+                    data.reader_throughput_ops_sec,
+                    data.writer_throughput_ops_sec,
+                    data.reader_reliability_percent,
+                    data.writer_reliability_percent
+                ];
 
-		    this.performanceChart.update('none');
-		}
-	    } catch (error) {
-		console.error(
-		    'Error fetching performance metrics:',
-		    error
-		);
-	    }
-	}
+                this.performanceChart.update('none');
+                this.updateChartTimestamp('performanceChart');
+            }
+        } catch (error) {
+            console.error(
+                'Error fetching performance metrics:',
+                error
+            );
+        }
+    }
 
     // === UPDATE STATS VALUES ===
     updateStats(data) {

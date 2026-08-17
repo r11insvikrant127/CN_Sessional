@@ -428,138 +428,180 @@ int log_operation_metrics(int reads, int writes, int active_readers, int active_
 }
 
 // FIXED: Calculate performance metrics from real data with proper logic
-int calculate_performance_metrics() {
+int calculate_performance_metrics()
+{
     pthread_mutex_lock(&db_mutex);
-    
-    // Check if we need to recalculate (time-based instead of operation count)
-    const char *check_sql = "SELECT last_performance_calc FROM system_stats WHERE id = 1;";
-    sqlite3_stmt *check_stmt;
-    int needs_recalc = 1;
-    
-    if (sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, NULL) == SQLITE_OK) {
-        if (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *last_calc = (const char *)sqlite3_column_text(check_stmt, 0);
-            // Recalculate only if more than 5 minutes have passed
-            const char *time_check_sql = "SELECT datetime(?) < datetime('now', '-5 minutes');";
-            sqlite3_stmt *time_stmt;
-            
-            if (sqlite3_prepare_v2(db, time_check_sql, -1, &time_stmt, NULL) == SQLITE_OK) {
-                sqlite3_bind_text(time_stmt, 1, last_calc, -1, SQLITE_STATIC);
-                if (sqlite3_step(time_stmt) == SQLITE_ROW) {
-                    needs_recalc = sqlite3_column_int(time_stmt, 0);
-                }
-                sqlite3_finalize(time_stmt);
-            }
-        }
-        sqlite3_finalize(check_stmt);
-    }
-    
-    if (!needs_recalc) {
-        pthread_mutex_unlock(&db_mutex);
-        return SUCCESS;
-    }
-    
-    // FIXED: Complete COALESCE statements for all metrics
+
+    /*
+     * Real performance measurements over the last 60 seconds.
+     *
+     * No arbitrary scoring constants are used.
+     *
+     * speed        = average successful operation duration (ms)
+     * reliability  = successful operations / total operations (%)
+     * concurrency  = maximum observed active clients
+     * scalability  = successful operations per second
+     * consistency  = mean absolute deviation of successful latency (ms)
+     * availability = successful operations / total operations (%)
+     */
+
     const char *metrics_sql =
-    "INSERT INTO performance_metrics (metric_type, reader_score, writer_score) "
+        "INSERT INTO performance_metrics "
+        "(metric_type, reader_score, writer_score) "
 
-    // SPEED: Faster successful operations = higher score
-    "SELECT 'speed', "
-    "   COALESCE(MAX(0, 100 - (SELECT AVG(duration_ms) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'reader' "
-    "       AND success = 1 "
-    "       AND duration_ms > 0) / 10), 0), "
-    "   COALESCE(MAX(0, 100 - (SELECT AVG(duration_ms) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'writer' "
-    "       AND success = 1 "
-    "       AND duration_ms > 0) / 10), 0) "
+        /* SPEED: real average successful operation latency */
+        "SELECT 'speed', "
+        "COALESCE((SELECT AVG(duration_ms) "
+        " FROM access_logs "
+        " WHERE client_type = 'reader' "
+        " AND success = 1 "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0), "
+        "COALESCE((SELECT AVG(duration_ms) "
+        " FROM access_logs "
+        " WHERE client_type = 'writer' "
+        " AND success = 1 "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0) "
 
-    "UNION ALL "
+        "UNION ALL "
 
-    // RELIABILITY: Successful operations / total operations
-    "SELECT 'reliability', "
-    "   COALESCE((SELECT "
-    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'reader'), 0), "
-    "   COALESCE((SELECT "
-    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'writer'), 0) "
+        /* RELIABILITY: successful operations / total operations */
+        "SELECT 'reliability', "
+        "COALESCE((SELECT "
+        " SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 "
+        " / NULLIF(COUNT(*), 0) "
+        " FROM access_logs "
+        " WHERE client_type = 'reader' "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0), "
+        "COALESCE((SELECT "
+        " SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 "
+        " / NULLIF(COUNT(*), 0) "
+        " FROM access_logs "
+        " WHERE client_type = 'writer' "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0) "
 
-    "UNION ALL "
+        "UNION ALL "
 
-    // CONCURRENCY: Based on observed active clients
-    "SELECT 'concurrency', "
-    "   COALESCE((SELECT MIN(100, AVG(active_readers) * 15) "
-    "       FROM operation_history "
-    "       WHERE timestamp > datetime('now', '-1 hour')), 0), "
-    "   COALESCE((SELECT MIN(100, AVG(active_writers) * 50) "
-    "       FROM operation_history "
-    "       WHERE timestamp > datetime('now', '-1 hour')), 0) "
+        /* CONCURRENCY: maximum actually observed active clients */
+        "SELECT 'concurrency', "
+        "COALESCE((SELECT MAX(active_readers) "
+        " FROM operation_history "
+        " WHERE timestamp >= datetime('now', '-60 seconds')), 0), "
+        "COALESCE((SELECT MAX(active_writers) "
+        " FROM operation_history "
+        " WHERE timestamp >= datetime('now', '-60 seconds')), 0) "
 
-    "UNION ALL "
+        "UNION ALL "
 
-    // SCALABILITY: Based on actual operations in the last hour
-    "SELECT 'scalability', "
-    "   COALESCE((SELECT MIN(100, COUNT(*) * 5) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'reader' "
-    "       AND timestamp > datetime('now', '-1 hour')), 0), "
-    "   COALESCE((SELECT MIN(100, COUNT(*) * 10) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'writer' "
-    "       AND timestamp > datetime('now', '-1 hour')), 0) "
+        /*
+         * SCALABILITY:
+         * Successful operations per second over the measurement window.
+         *
+         * This is deliberately a measured rate rather than an invented
+         * 0-100 score.
+         */
+        "SELECT 'scalability', "
+        "COALESCE((SELECT "
+        " SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) / 60.0 "
+        " FROM access_logs "
+        " WHERE client_type = 'reader' "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0), "
+        "COALESCE((SELECT "
+        " SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) / 60.0 "
+        " FROM access_logs "
+        " WHERE client_type = 'writer' "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0) "
 
-    "UNION ALL "
+        "UNION ALL "
 
-    // CONSISTENCY: Recent successful-operation percentage
-    "SELECT 'consistency', "
-    "   COALESCE((SELECT "
-    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'reader' "
-    "       AND timestamp > datetime('now', '-1 hour')), 0), "
-    "   COALESCE((SELECT "
-    "       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'writer' "
-    "       AND timestamp > datetime('now', '-1 hour')), 0) "
+        /*
+         * CONSISTENCY:
+         * Mean absolute deviation of successful operation duration.
+         *
+         * Lower value = more consistent latency.
+         *
+         * No SQLite sqrt/math extension is required.
+         */
+        "SELECT 'consistency', "
+        "COALESCE((SELECT AVG(ABS(a.duration_ms - "
+        "    (SELECT AVG(b.duration_ms) "
+        "     FROM access_logs b "
+        "     WHERE b.client_type = 'reader' "
+        "     AND b.success = 1 "
+        "     AND b.timestamp >= datetime('now', '-60 seconds')))) "
+        " FROM access_logs a "
+        " WHERE a.client_type = 'reader' "
+        " AND a.success = 1 "
+        " AND a.timestamp >= datetime('now', '-60 seconds')), 0), "
+        "COALESCE((SELECT AVG(ABS(a.duration_ms - "
+        "    (SELECT AVG(b.duration_ms) "
+        "     FROM access_logs b "
+        "     WHERE b.client_type = 'writer' "
+        "     AND b.success = 1 "
+        "     AND b.timestamp >= datetime('now', '-60 seconds')))) "
+        " FROM access_logs a "
+        " WHERE a.client_type = 'writer' "
+        " AND a.success = 1 "
+        " AND a.timestamp >= datetime('now', '-60 seconds')), 0) "
 
-    "UNION ALL "
+        "UNION ALL "
 
-    // AVAILABILITY: Based on actual success/failure rate
-    "SELECT 'availability', "
-    "   COALESCE((SELECT "
-    "       100.0 - "
-    "       (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'reader' "
-    "       AND timestamp > datetime('now', '-1 day')), 0), "
-    "   COALESCE((SELECT "
-    "       100.0 - "
-    "       (SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) "
-    "       FROM access_logs "
-    "       WHERE client_type = 'writer' "
-    "       AND timestamp > datetime('now', '-1 day')), 0);";
-    
+        /*
+         * AVAILABILITY:
+         * Successful operations / all operations over the last 60 seconds.
+         */
+        "SELECT 'availability', "
+        "COALESCE((SELECT "
+        " SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 "
+        " / NULLIF(COUNT(*), 0) "
+        " FROM access_logs "
+        " WHERE client_type = 'reader' "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0), "
+        "COALESCE((SELECT "
+        " SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 "
+        " / NULLIF(COUNT(*), 0) "
+        " FROM access_logs "
+        " WHERE client_type = 'writer' "
+        " AND timestamp >= datetime('now', '-60 seconds')), 0);";
+
     char *err_msg = NULL;
-    int rc = sqlite3_exec(db, metrics_sql, NULL, NULL, &err_msg);
+
+    int rc = sqlite3_exec(
+        db,
+        metrics_sql,
+        NULL,
+        NULL,
+        &err_msg
+    );
+
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "SQL error calculating performance metrics: %s\n", err_msg);
+        fprintf(
+            stderr,
+            "SQL error calculating performance metrics: %s\n",
+            err_msg ? err_msg : sqlite3_errmsg(db)
+        );
+
         sqlite3_free(err_msg);
-    } else {
-        // Update last calculation time
-	sqlite3_exec(db, "UPDATE system_stats SET last_performance_calc = datetime('now') WHERE id = 1;", NULL, NULL, NULL);
+        pthread_mutex_unlock(&db_mutex);
+        return ERROR_DB;
     }
-    
-    // Clean old performance data
-    const char *cleanup_sql = "DELETE FROM performance_metrics WHERE recorded_at < datetime('now', '-7 days');";
-    sqlite3_exec(db, cleanup_sql, NULL, NULL, NULL);
-    
+
+    /*
+     * Keep only the last 7 days of metric snapshots.
+     */
+    const char *cleanup_sql =
+        "DELETE FROM performance_metrics "
+        "WHERE recorded_at < datetime('now', '-7 days');";
+
+    sqlite3_exec(
+        db,
+        cleanup_sql,
+        NULL,
+        NULL,
+        NULL
+    );
+
     pthread_mutex_unlock(&db_mutex);
+
     return SUCCESS;
 }
 

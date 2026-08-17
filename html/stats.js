@@ -119,43 +119,16 @@ class Statistics {
             }
         });
 
-        // Efficiency Radar - Initialize with loading state
-        const efficiencyCtx = document.getElementById('efficiencyChart').getContext('2d');
-        this.charts.efficiency = new Chart(efficiencyCtx, {
-            type: 'radar',
-            data: {
-                labels: ['Speed', 'Reliability', 'Concurrency', 'Scalability', 'Consistency', 'Availability'],
-                datasets: [
-                    {
-                        label: 'Reader Performance',
-                        data: [0, 0, 0, 0, 0, 0],
-                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                        borderColor: 'rgb(59, 130, 246)',
-                        pointBackgroundColor: 'rgb(59, 130, 246)'
-                    },
-                    {
-                        label: 'Writer Performance',
-                        data: [0, 0, 0, 0, 0, 0],
-                        backgroundColor: 'rgba(139, 92, 246, 0.2)',
-                        borderColor: 'rgb(139, 92, 246)',
-                        pointBackgroundColor: 'rgb(139, 92, 246)'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    r: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: {
-                            stepSize: 20
-                        }
-                    }
-                }
-            }
-        });
+                // === REAL PERFORMANCE METRICS ===
+        /*
+         * Performance metrics use their actual units.
+         *
+         * We intentionally do NOT combine latency (ms), throughput
+         * (ops/sec), percentages, and concurrency into a single
+         * 0-100 score because doing so would create an artificial
+         * combined metric.
+         */
+        this.charts.efficiency = null;
     }
 
     async preloadInitialData() {
@@ -305,28 +278,104 @@ class Statistics {
 
     async loadPerformanceMetrics() {
         try {
-            const response = await fetch('/CN_Sessional/cgi-bin/server.cgi/performance');
-            if (!response.ok) throw new Error('Network response was not ok');
-            
+            const response =
+                await fetch('/CN_Sessional/cgi-bin/server.cgi/performance');
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
             const data = await response.json();
-            this.updateChartSmoothly('efficiency', () => {
-                this.charts.efficiency.data.datasets[0].data = [
-                    data.reader_speed,
-                    data.reader_reliability,
-                    data.reader_concurrency,
-                    data.reader_scalability,
-                    data.reader_consistency,
-                    data.reader_availability
-                ];
-                this.charts.efficiency.data.datasets[1].data = [
-                    data.writer_speed,
-                    data.writer_reliability,
-                    data.writer_concurrency,
-                    data.writer_scalability,
-                    data.writer_consistency,
-                    data.writer_availability
-                ];
-            });
+
+            const container =
+                document.getElementById('efficiencyMetrics');
+
+            if (!container) {
+                throw new Error('Performance metrics container not found');
+            }
+
+            const formatMs = value =>
+                Number(value || 0).toFixed(2) + ' ms';
+
+            const formatPercent = value =>
+                Number(value || 0).toFixed(2) + '%';
+
+            const formatOps = value =>
+                Number(value || 0).toFixed(2) + ' ops/sec';
+
+            const formatClients = value =>
+                Number(value || 0).toFixed(0) + ' clients';
+
+            container.innerHTML = `
+                <div class="performance-metric-group">
+                    <h4>Reader</h4>
+
+                    <div class="performance-metric-row">
+                        <span>Average latency</span>
+                        <strong>${formatMs(data.reader_speed_ms)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Reliability</span>
+                        <strong>${formatPercent(data.reader_reliability_percent)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Maximum concurrency</span>
+                        <strong>${formatClients(data.reader_max_concurrency)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Throughput</span>
+                        <strong>${formatOps(data.reader_throughput_ops_sec)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Latency consistency</span>
+                        <strong>${formatMs(data.reader_consistency_ms)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Availability</span>
+                        <strong>${formatPercent(data.reader_availability_percent)}</strong>
+                    </div>
+                </div>
+
+                <div class="performance-metric-group">
+                    <h4>Writer</h4>
+
+                    <div class="performance-metric-row">
+                        <span>Average latency</span>
+                        <strong>${formatMs(data.writer_speed_ms)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Reliability</span>
+                        <strong>${formatPercent(data.writer_reliability_percent)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Maximum concurrency</span>
+                        <strong>${formatClients(data.writer_max_concurrency)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Throughput</span>
+                        <strong>${formatOps(data.writer_throughput_ops_sec)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Latency consistency</span>
+                        <strong>${formatMs(data.writer_consistency_ms)}</strong>
+                    </div>
+
+                    <div class="performance-metric-row">
+                        <span>Availability</span>
+                        <strong>${formatPercent(data.writer_availability_percent)}</strong>
+                    </div>
+                </div>
+            `;
+
         } catch (error) {
             this.handleDataLoadError('performance metrics');
         }

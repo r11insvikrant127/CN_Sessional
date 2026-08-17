@@ -699,22 +699,23 @@ void handle_performance_metrics() {
 		sqlite3_finalize(throughput_stmt);
 	    }
 
-	printf("  \"reader_speed\": %.2f,\n", reader_speed);
-	printf("  \"reader_reliability\": %.2f,\n", reader_reliability);
-	printf("  \"reader_concurrency\": %.2f,\n", reader_concurrency);
-	printf("  \"reader_scalability\": %.2f,\n", reader_scalability);
-	printf("  \"reader_consistency\": %.2f,\n", reader_consistency);
-	printf("  \"reader_availability\": %.2f,\n", reader_availability);
+	printf("  \"reader_speed_ms\": %.2f,\n", reader_speed);
+	printf("  \"reader_reliability_percent\": %.2f,\n", reader_reliability);
+	printf("  \"reader_max_concurrency\": %.2f,\n", reader_concurrency);
+	printf("  \"reader_scalability_ops_sec\": %.2f,\n", reader_scalability);
+	printf("  \"reader_consistency_ms\": %.2f,\n", reader_consistency);
+	printf("  \"reader_availability_percent\": %.2f,\n", reader_availability);
 
-	printf("  \"writer_speed\": %.2f,\n", writer_speed);
-	printf("  \"writer_reliability\": %.2f,\n", writer_reliability);
-	printf("  \"writer_concurrency\": %.2f,\n", writer_concurrency);
-	printf("  \"writer_scalability\": %.2f,\n", writer_scalability);
-	printf("  \"writer_consistency\": %.2f,\n", writer_consistency);
-	printf("  \"writer_availability\": %.2f,\n", writer_availability);
-	printf("  \"reader_throughput\": %.2f,\n", reader_throughput);
-	printf("  \"writer_throughput\": %.2f,\n", writer_throughput);
-	printf("  \"total_throughput\": %.2f\n", total_throughput);
+	printf("  \"writer_speed_ms\": %.2f,\n", writer_speed);
+	printf("  \"writer_reliability_percent\": %.2f,\n", writer_reliability);
+	printf("  \"writer_max_concurrency\": %.2f,\n", writer_concurrency);
+	printf("  \"writer_scalability_ops_sec\": %.2f,\n", writer_scalability);
+	printf("  \"writer_consistency_ms\": %.2f,\n", writer_consistency);
+	printf("  \"writer_availability_percent\": %.2f,\n", writer_availability);
+
+	printf("  \"reader_throughput_ops_sec\": %.2f,\n", reader_throughput);
+	printf("  \"writer_throughput_ops_sec\": %.2f,\n", writer_throughput);
+	printf("  \"total_throughput_ops_sec\": %.2f\n", total_throughput);
 	printf("}\n");
     
     pthread_mutex_unlock(&db_mutex);
