@@ -455,6 +455,78 @@ int destroy_session(const char *session_id) {
 }
 
 
+
+/*
+ * Remove expired sessions from the database.
+ *
+ * Expired sessions are already rejected by validate_session().
+ * This cleanup additionally removes stale rows so the sessions
+ * table does not grow indefinitely.
+ */
+int cleanup_expired_sessions(void) {
+    pthread_mutex_lock(&db_mutex);
+
+    if (db == NULL) {
+        pthread_mutex_unlock(&db_mutex);
+        return AUTH_DATABASE_ERROR;
+    }
+
+    const char *sql =
+        "DELETE FROM sessions "
+        "WHERE expires_at <= datetime('now', 'localtime');";
+
+    sqlite3_stmt *stmt = NULL;
+
+    int rc = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &stmt,
+        NULL
+    );
+
+    if (rc != SQLITE_OK) {
+        fprintf(
+            stderr,
+            "Expired-session cleanup SQL prepare failed: %s\n",
+            sqlite3_errmsg(db)
+        );
+
+        pthread_mutex_unlock(&db_mutex);
+        return AUTH_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_step(stmt);
+
+    if (rc != SQLITE_DONE) {
+        fprintf(
+            stderr,
+            "Expired-session cleanup failed: %s\n",
+            sqlite3_errmsg(db)
+        );
+
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(&db_mutex);
+        return AUTH_DATABASE_ERROR;
+    }
+
+    int deleted = sqlite3_changes(db);
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+
+    if (deleted > 0) {
+        fprintf(
+            stderr,
+            "Expired-session cleanup: removed %d session(s)\n",
+            deleted
+        );
+    }
+
+    return AUTH_SUCCESS;
+}
+
+
 /*
  * Record authentication/security events.
  */

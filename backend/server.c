@@ -760,6 +760,17 @@ void handle_reader() {
 }
 
 /*
+ * Security headers for authentication/session responses.
+ *
+ * no-store prevents browsers and intermediary caches from
+ * retaining sensitive authentication responses.
+ */
+void print_auth_security_headers(void) {
+    printf("Cache-Control: no-store, no-cache, must-revalidate, private\r\n");
+    printf("Pragma: no-cache\r\n");
+}
+
+/*
  * Handle POST /login
  *
  * Authentication flow:
@@ -922,15 +933,16 @@ void handle_login() {
      * Matches the 30-minute server-side session lifetime.
      */
     printf(
-        "Set-Cookie: session_id=%s; "
-        "Max-Age=1800; "
-        "Path=/; "
-        "HttpOnly; "
-        "SameSite=Lax\r\n",
-        session_id
-    );
+	    "Set-Cookie: session_id=%s; "
+	    "Max-Age=1800; "
+	    "Path=/CN_Sessional; "
+	    "HttpOnly; "
+	    "SameSite=Lax\r\n",
+	    session_id
+	);
 
-    printf("Content-Type: application/json\r\n");
+	print_auth_security_headers();
+	printf("Content-Type: application/json\r\n");
     printf("\r\n");
 
     printf(
@@ -959,14 +971,15 @@ void handle_logout() {
         ) != AUTH_SUCCESS) {
 
         printf(
-            "Set-Cookie: session_id=; "
-            "Max-Age=0; "
-            "Path=/; "
-            "HttpOnly; "
-            "SameSite=Lax\r\n"
-        );
+	    "Set-Cookie: session_id=; "
+	    "Max-Age=0; "
+	    "Path=/CN_Sessional; "
+	    "HttpOnly; "
+	    "SameSite=Lax\r\n"
+	);
 
-        printf("Content-Type: application/json\r\n");
+	print_auth_security_headers();
+	printf("Content-Type: application/json\r\n");
         printf("\r\n");
 
         printf(
@@ -1020,14 +1033,15 @@ void handle_logout() {
      * Expire the browser cookie immediately.
      */
     printf(
-        "Set-Cookie: session_id=; "
-        "Max-Age=0; "
-        "Path=/; "
-        "HttpOnly; "
-        "SameSite=Lax\r\n"
-    );
+	    "Set-Cookie: session_id=; "
+	    "Max-Age=0; "
+	    "Path=/CN_Sessional; "
+	    "HttpOnly; "
+	    "SameSite=Lax\r\n"
+	);
 
-    printf("Content-Type: application/json\r\n");
+	print_auth_security_headers();
+	printf("Content-Type: application/json\r\n");
     printf("\r\n");
 
     printf(
@@ -1887,8 +1901,9 @@ void handle_me() {
         ) != AUTH_SUCCESS) {
 
         printf("Status: 401 Unauthorized\r\n");
-        printf("Content-Type: application/json\r\n");
-        printf("\r\n");
+	print_auth_security_headers();
+	printf("Content-Type: application/json\r\n");
+	printf("\r\n");
 
         printf(
             "{\"authenticated\":false,"
@@ -1917,8 +1932,9 @@ void handle_me() {
     if (result != AUTH_SUCCESS) {
 
         printf("Status: 401 Unauthorized\r\n");
-        printf("Content-Type: application/json\r\n");
-        printf("\r\n");
+	print_auth_security_headers();
+	printf("Content-Type: application/json\r\n");
+	printf("\r\n");
 
         printf(
             "{\"authenticated\":false,"
@@ -1931,8 +1947,9 @@ void handle_me() {
     /*
      * Successfully authenticated.
      */
-    printf("Content-Type: application/json\r\n");
-    printf("\r\n");
+    print_auth_security_headers();
+	printf("Content-Type: application/json\r\n");
+	printf("\r\n");
 
     printf(
         "{\"authenticated\":true,"
@@ -1947,6 +1964,25 @@ void handle_me() {
 
 // FIXED: Enhanced main function with database resilience
 int main() {
+
+	    /*
+	     * Initialize libsodium before using any cryptographic
+	     * functionality such as password verification or
+	     * cryptographically secure session-token generation.
+	     */
+	    if (sodium_init() < 0) {
+		fprintf(stderr, "libsodium initialization failed\n");
+
+		printf("Status: 500 Internal Server Error\r\n");
+		printf("Content-Type: application/json\r\n");
+		printf("\r\n");
+
+		printf(
+		    "{\"success\":false,\"error\":\"Cryptographic initialization failed\"}\n"
+		);
+
+		return 1;
+	    }
     // Initialize database with retry mechanism
     int retries = 3;
     int db_success = 0;
@@ -1969,6 +2005,20 @@ int main() {
         printf("<html><body><h1>Database initialization failed after multiple attempts</h1>");
         printf("<p>Please check the database file and try again.</p></body></html>");
         return 1;
+    }
+
+    /*
+     * Remove expired server-side sessions.
+     *
+     * Expired sessions are already rejected by validate_session(),
+     * but stale database rows should also be removed so the sessions
+     * table does not grow indefinitely.
+     *
+     * Cleanup failure is non-fatal because authentication correctness
+     * is still enforced by validate_session().
+     */
+    if (cleanup_expired_sessions() != AUTH_SUCCESS) {
+        fprintf(stderr, "Warning: expired-session cleanup failed\n");
     }
     if (sync_manager_init() != SUCCESS) {
 	    printf("Status: 500 Internal Server Error\r\n");

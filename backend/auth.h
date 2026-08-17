@@ -82,6 +82,11 @@ int validate_session(
 int destroy_session(const char *session_id);
 
 /*
+ * Remove expired sessions from the sessions table.
+ */
+int cleanup_expired_sessions(void);
+
+/*
  * Record authentication/security events.
  */
 int log_auth_event(
