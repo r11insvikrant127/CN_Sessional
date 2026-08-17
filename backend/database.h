@@ -19,7 +19,7 @@ int ensure_database_connection();
 // Core database operations  
 int read_messages(FILE *output);
 int write_message(const char *username, const char *message);
-int log_access(const char *client_id, const char *client_type, const char *action, int duration_ms, int success);
+int log_access(const char *client_id, const char *client_type, const char *action, int duration_ms, int wait_time_ms, int success);
 int update_stats(int readers_delta, int writers_delta, int reads_delta, int writes_delta);
 
 // Statistics and monitoring functions

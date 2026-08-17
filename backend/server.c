@@ -23,10 +23,7 @@ extern sqlite3 *db;
 extern int initialize_database();
 extern int read_messages(FILE *output);
 extern int write_message(const char *authenticated_username, const char *message);
-extern int log_access(const char *client_id, const char *client_type, const char *action, int duration_ms, int success);
-extern int acquire_read_lock(const char *client_id);
 extern void release_read_lock();
-extern int acquire_write_lock(const char *client_id);
 extern void release_write_lock();
 extern void close_database();
 extern int get_current_stats(int *readers, int *writers, int *total_reads, int *total_writes);
@@ -620,6 +617,9 @@ void handle_performance_metrics() {
 	double writer_consistency = 0;
 	double reader_availability = 0;
 	double writer_availability = 0;
+	double reader_throughput = 0;
+	double writer_throughput = 0;
+	double total_throughput = 0;
 
     
     if (rc == SQLITE_OK) {
@@ -651,6 +651,54 @@ void handle_performance_metrics() {
         sqlite3_finalize(stmt);
     }
     
+	    /*
+	     * Calculate actual throughput from completed successful operations
+	     * during the last 60 seconds.
+	     *
+	     * Throughput = successful operations / 60 seconds.
+	     */
+	    const char *throughput_sql =
+		"SELECT "
+		"COALESCE(SUM(CASE "
+		"    WHEN client_type = 'reader' AND success = 1 THEN 1 "
+		"    ELSE 0 END), 0), "
+		"COALESCE(SUM(CASE "
+		"    WHEN client_type = 'writer' AND success = 1 THEN 1 "
+		"    ELSE 0 END), 0), "
+		"COALESCE(SUM(CASE "
+		"    WHEN success = 1 THEN 1 "
+		"    ELSE 0 END), 0) "
+		"FROM access_logs "
+		"WHERE timestamp >= datetime('now', '-60 seconds');";
+
+	    sqlite3_stmt *throughput_stmt = NULL;
+
+	    if (sqlite3_prepare_v2(
+		    db,
+		    throughput_sql,
+		    -1,
+		    &throughput_stmt,
+		    NULL
+		) == SQLITE_OK) {
+
+		if (sqlite3_step(throughput_stmt) == SQLITE_ROW) {
+		    double reader_operations =
+		        sqlite3_column_double(throughput_stmt, 0);
+
+		    double writer_operations =
+		        sqlite3_column_double(throughput_stmt, 1);
+
+		    double total_operations =
+		        sqlite3_column_double(throughput_stmt, 2);
+
+		    reader_throughput = reader_operations / 60.0;
+		    writer_throughput = writer_operations / 60.0;
+		    total_throughput = total_operations / 60.0;
+		}
+
+		sqlite3_finalize(throughput_stmt);
+	    }
+
 	printf("  \"reader_speed\": %.2f,\n", reader_speed);
 	printf("  \"reader_reliability\": %.2f,\n", reader_reliability);
 	printf("  \"reader_concurrency\": %.2f,\n", reader_concurrency);
@@ -663,7 +711,10 @@ void handle_performance_metrics() {
 	printf("  \"writer_concurrency\": %.2f,\n", writer_concurrency);
 	printf("  \"writer_scalability\": %.2f,\n", writer_scalability);
 	printf("  \"writer_consistency\": %.2f,\n", writer_consistency);
-	printf("  \"writer_availability\": %.2f\n", writer_availability);
+	printf("  \"writer_availability\": %.2f,\n", writer_availability);
+	printf("  \"reader_throughput\": %.2f,\n", reader_throughput);
+	printf("  \"writer_throughput\": %.2f,\n", writer_throughput);
+	printf("  \"total_throughput\": %.2f\n", total_throughput);
 	printf("}\n");
     
     pthread_mutex_unlock(&db_mutex);
@@ -672,6 +723,7 @@ void handle_performance_metrics() {
 void handle_reader() {
     char *client_id = generate_client_id();
     long long start_time = current_timestamp();
+    long long wait_time_ms = 0;
     int success = 0;
     
     print_html_header("Reader View - Chat Messages");
@@ -694,7 +746,7 @@ void handle_reader() {
     printf("</div>");
     
     // Acquire read lock and load messages
-    if (acquire_read_lock(client_id) == SUCCESS) {
+    if (acquire_read_lock(client_id, &wait_time_ms) == SUCCESS) {
         printf("<div id='messagesContent'>");
         
         // Read messages from database
@@ -753,7 +805,14 @@ void handle_reader() {
     
     // Log access
     long long duration = current_timestamp() - start_time;
-    log_access(client_id, "reader", "read", duration, success);
+    log_access(
+	    client_id,
+	    "reader",
+	    "read",
+	    duration,
+	    (int)wait_time_ms,
+	    success
+	);
     
     free(client_id);
     print_html_footer();
@@ -1103,6 +1162,7 @@ void handle_writer_authenticated(
     char *client_type = NULL;
     char *client_id = generate_client_id();
     long long start_time = current_timestamp();
+    long long wait_time_ms = 0;
     int success = 0;
     (void)authenticated_user_id;
     (void)authenticated_role;
@@ -1150,7 +1210,7 @@ void handle_writer_authenticated(
 	    authenticated_username &&
 	    strlen(authenticated_username) > 0) {
         // Acquire write lock
-        if (acquire_write_lock(client_id) == SUCCESS) {
+        if (acquire_write_lock(client_id, &wait_time_ms) == SUCCESS) {
             // Write message to database
             if (write_message(authenticated_username, message) == SUCCESS) {
                 success = 1;
@@ -1324,7 +1384,14 @@ void handle_writer_authenticated(
     
     // Log access
     long long duration = current_timestamp() - start_time;
-    log_access(client_id, "writer", "write", duration, success);
+    log_access(
+	    client_id,
+	    "writer",
+	    "write",
+	    duration,
+	    (int)wait_time_ms,
+	    success
+	);
     
     // FIXED: Proper memory management with NULL checks
     free(client_id);

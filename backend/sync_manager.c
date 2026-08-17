@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 /*
  * Named semaphores shared by all CGI processes.
@@ -27,7 +28,14 @@ static sem_t *init_sem = SEM_FAILED;
 static rw_shared_state *shared_state = NULL;
 
 static int shm_fd = -1;
+static long long sync_current_timestamp(void)
+{
+    struct timeval tv;
 
+    gettimeofday(&tv, NULL);
+
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+}
 
 /*
  * Open/create shared synchronization resources.
@@ -239,9 +247,10 @@ int get_sync_state(
  * The first reader acquires resource_sem.
  * The last reader releases resource_sem.
  */
-int acquire_read_lock(const char *client_id)
+int acquire_read_lock(const char *client_id, long long *wait_time_ms)
 {
     (void)client_id;
+    long long wait_start = sync_current_timestamp();
 
     if (ensure_sync_initialized() != SUCCESS) {
         return ERROR_LOCK;
@@ -259,7 +268,11 @@ int acquire_read_lock(const char *client_id)
     sem_post(read_count_sem);
 
     /*
-     * Fairness gate.
+     * Enter the fairness queue.
+     *
+     * A reader keeps queue_sem while the FIRST reader waits for
+     * resource_sem. This prevents another writer from entering
+     * the queue while the first reader is waiting.
      */
     if (sem_wait(queue_sem) != 0) {
         if (sem_wait(read_count_sem) == 0) {
@@ -273,7 +286,7 @@ int acquire_read_lock(const char *client_id)
     }
 
     /*
-     * Reader is no longer waiting at the fairness gate.
+     * Check whether this is the first active reader.
      */
     if (sem_wait(read_count_sem) != 0) {
         sem_post(queue_sem);
@@ -284,32 +297,56 @@ int acquire_read_lock(const char *client_id)
         shared_state->waiting_readers--;
     }
 
+    int first_reader = (shared_state->active_readers == 0);
+
     /*
-     * First reader acquires the shared resource.
+     * IMPORTANT:
+     * Do NOT hold read_count_sem while waiting for resource_sem.
+     *
+     * Otherwise:
+     *
+     * Reader -> holds read_count_sem -> waits resource_sem
+     * Writer -> releases resource_sem -> needs read_count_sem
+     *
+     * causing a deadlock.
      */
-    if (shared_state->active_readers == 0) {
+    sem_post(read_count_sem);
+
+    if (first_reader) {
         if (sem_wait(resource_sem) != 0) {
-            sem_post(read_count_sem);
             sem_post(queue_sem);
             return ERROR_LOCK;
         }
     }
 
+    /*
+     * Resource is now available to the first reader.
+     * Other readers can join without acquiring resource_sem again.
+     */
+    if (sem_wait(read_count_sem) != 0) {
+        if (first_reader) {
+            sem_post(resource_sem);
+        }
+        sem_post(queue_sem);
+        return ERROR_LOCK;
+    }
+
     shared_state->active_readers++;
 
+    if (wait_time_ms != NULL) {
+       *wait_time_ms = sync_current_timestamp() - wait_start;
+    }
+
     /*
-     * Take a snapshot while protected.
+     * Snapshot state while protected.
      */
     int readers = shared_state->active_readers;
     int writers = shared_state->active_writers;
 
-    /*
-     * Release synchronization protection BEFORE doing DB I/O.
-     */
     sem_post(read_count_sem);
 
     /*
-     * Update database outside the synchronization critical section.
+     * Database I/O outside synchronization critical section.
      */
     update_active_counts(readers, writers);
 
@@ -320,7 +357,6 @@ int acquire_read_lock(const char *client_id)
 
     return SUCCESS;
 }
-
 
 /*
  * Release Reader lock.
@@ -377,9 +413,10 @@ void release_read_lock(void)
  *
  * Only one writer can hold resource_sem.
  */
-int acquire_write_lock(const char *client_id)
+int acquire_write_lock(const char *client_id, long long *wait_time_ms)
 {
     (void)client_id;
+    long long wait_start = sync_current_timestamp();
 
     if (ensure_sync_initialized() != SUCCESS) {
         return ERROR_LOCK;
@@ -440,6 +477,9 @@ int acquire_write_lock(const char *client_id)
     }
 
     shared_state->active_writers = 1;
+    if (wait_time_ms != NULL) {
+	    *wait_time_ms = sync_current_timestamp() - wait_start;
+	}
 
     /*
      * Snapshot state while protected.
@@ -490,13 +530,17 @@ void release_write_lock(void)
 
     sem_post(read_count_sem);
 
-    /*
-     * Database I/O outside synchronization critical section.
-     */
-    update_active_counts(readers, writers);
-
-    /*
-     * Finally release the actual shared resource.
+      /*
+     * Release the actual shared resource first.
+     *
+     * This allows waiting readers/writers to continue without
+     * being blocked by database I/O.
      */
     sem_post(resource_sem);
+
+    /*
+     * Database I/O happens after the synchronization resource
+     * has been released.
+     */
+    update_active_counts(readers, writers);
 }

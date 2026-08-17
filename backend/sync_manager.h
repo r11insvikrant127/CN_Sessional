@@ -26,13 +26,13 @@ int sync_manager_init(void);
 /*
  * Reader lock.
  */
-int acquire_read_lock(const char *client_id);
+int acquire_read_lock(const char *client_id, long long *wait_time_ms);
 void release_read_lock(void);
 
 /*
  * Writer lock.
  */
-int acquire_write_lock(const char *client_id);
+int acquire_write_lock(const char *client_id, long long *wait_time_ms);
 void release_write_lock(void);
 
 /*

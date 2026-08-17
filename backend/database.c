@@ -564,34 +564,48 @@ int calculate_performance_metrics() {
 }
 
 // FIXED: Use parameterized queries for log_access
-int log_access(const char *client_id, const char *client_type, const char *action, int duration_ms, int success) {
+int log_access(
+    const char *client_id,
+    const char *client_type,
+    const char *action,
+    int duration_ms,
+    int wait_time_ms,
+    int success
+) {
     pthread_mutex_lock(&db_mutex);
-    
-    const char *sql = "INSERT INTO access_logs (client_id, client_type, action, duration_ms, success) VALUES (?, ?, ?, ?, ?);";
+
+    const char *sql =
+        "INSERT INTO access_logs "
+        "(client_id, client_type, action, duration_ms, wait_time_ms, success) "
+        "VALUES (?, ?, ?, ?, ?, ?);";
+
     sqlite3_stmt *stmt;
-    
+
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        fprintf(stderr, "Failed to prepare statement: %s\n",
+                sqlite3_errmsg(db));
         pthread_mutex_unlock(&db_mutex);
         return ERROR_DB;
     }
-    
+
     sqlite3_bind_text(stmt, 1, client_id, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, client_type, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, action, -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 4, duration_ms);
-    sqlite3_bind_int(stmt, 5, success);
-    
+    sqlite3_bind_int(stmt, 5, wait_time_ms);
+    sqlite3_bind_int(stmt, 6, success);
+
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    
+
     if (rc != SQLITE_DONE) {
-        fprintf(stderr, "SQL error logging access: %s\n", sqlite3_errmsg(db));
+        fprintf(stderr, "SQL error logging access: %s\n",
+                sqlite3_errmsg(db));
         pthread_mutex_unlock(&db_mutex);
         return ERROR_DB;
     }
-    
+
     pthread_mutex_unlock(&db_mutex);
     return SUCCESS;
 }
